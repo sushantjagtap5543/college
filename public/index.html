@@ -1,423 +1,441 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker - College Project</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>Live GPS Tracker | Google Maps Dashboard</title>
+    <!-- Google Maps API - Note: Replace YOUR_API_KEY with an actual key -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
     <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --secondary: #059669;
+            --accent: #d97706;
+            --bg-light: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-dim: #64748b;
+            --border: #e2e8f0;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-color: var(--bg-light);
+            color: var(--text-main);
             min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        header {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
-        }
-
-        h1 {
-            color: #333;
-            font-size: 28px;
-            margin-bottom: 10px;
-        }
-
-        .server-info {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
-
-        .server-info h3 {
-            color: #667eea;
-            margin-bottom: 10px;
-            font-size: 18px;
-        }
-
-        .info-grid {
+        .dashboard {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 10px;
+            grid-template-columns: 380px 1fr;
+            height: 100vh;
+            gap: 0;
         }
 
-        .info-item {
-            background: white;
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 4px solid #667eea;
-        }
-
-        .info-item label {
-            display: block;
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-            font-weight: 600;
-        }
-
-        .info-item .value {
-            font-size: 16px;
-            color: #333;
-            font-weight: 600;
-            font-family: 'Courier New', monospace;
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 350px 1fr;
-            gap: 20px;
-        }
-
+        /* Sidebar Styling */
         .sidebar {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            height: fit-content;
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            z-index: 10;
+            overflow-y: auto;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.05);
         }
 
-        .map-container {
-            background: white;
-            padding: 10px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        #map {
-            height: 600px;
-            border-radius: 8px;
-        }
-
-        .status {
+        .logo {
             display: flex;
             align-items: center;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
         }
 
-        .status.connected {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
         }
 
-        .status.disconnected {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: -0.5px;
+        }
+
+        .status-card {
+            background: #f1f5f9;
+            border-radius: 16px;
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .status-card.connected {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
         }
 
         .status-dot {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            margin-right: 10px;
+            background: #94a3b8;
+            position: relative;
+        }
+
+        .connected .status-dot {
+            background: var(--secondary);
+        }
+
+        .connected .status-dot::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: var(--secondary);
             animation: pulse 2s infinite;
         }
 
-        .status.connected .status-dot {
-            background: #28a745;
-        }
-
-        .status.disconnected .status-dot {
-            background: #dc3545;
-        }
-
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .data-section {
-            margin-bottom: 20px;
-        }
-
-        .data-section h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 16px;
-        }
-
-        .data-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .data-row:last-child {
-            border-bottom: none;
-        }
-
-        .data-label {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .data-value {
-            color: #333;
-            font-weight: 600;
-            font-size: 14px;
-            font-family: 'Courier New', monospace;
-        }
-
-        .copy-btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            margin-left: 8px;
-        }
-
-        .copy-btn:hover {
-            background: #5568d3;
-        }
-
-        .copy-btn:active {
-            transform: scale(0.95);
-        }
-
-        .instructions {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 20px;
-        }
-
-        .instructions h4 {
-            color: #856404;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        .instructions ol {
-            margin-left: 20px;
-            color: #856404;
-            font-size: 13px;
-        }
-
-        .instructions li {
-            margin-bottom: 5px;
-        }
-
-        @media (max-width: 968px) {
-            .main-content {
-                grid-template-columns: 1fr;
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
             }
 
-            .info-grid {
+            100% {
+                transform: scale(2.5);
+                opacity: 0;
+            }
+        }
+
+        .status-info h3 {
+            font-size: 0.875rem;
+            color: var(--text-dim);
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .status-info p {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .stat-item {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem;
+        }
+
+        .stat-label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .coordinates-box {
+            background: #f1f5f9;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .coord-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .coord-row:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Map Container */
+        .map-section {
+            position: relative;
+            height: 100%;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        .map-overlay {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .overlay-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-main);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard {
                 grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr;
+            }
+
+            .sidebar {
+                height: auto;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            #map {
+                height: 500px;
             }
         }
     </style>
 </head>
+
 <body>
-    <div class="container">
-        <header>
-            <h1>🛰️ GPS Tracker - College Project</h1>
-            <p style="color: #666; margin-top: 5px;">Real-time GPS Location Tracking System</p>
-            
-            <div class="server-info">
-                <h3>📡 Server Configuration</h3>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <label>Your Server IP</label>
-                        <div class="value" id="serverIP">Loading...</div>
-                    </div>
-                    <div class="info-item">
-                        <label>GPS Data Port</label>
-                        <div class="value">5000</div>
-                    </div>
-                    <div class="info-item">
-                        <label>Web Interface Port</label>
-                        <div class="value">3000</div>
-                    </div>
-                </div>
+    <div class="dashboard">
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">🚗</div>
+                <h1>FleetTrace</h1>
             </div>
-        </header>
 
-        <div class="main-content">
-            <div class="sidebar">
-                <div class="status disconnected" id="status">
-                    <div class="status-dot"></div>
-                    <span>Waiting for GPS data...</span>
-                </div>
-
-                <div class="data-section">
-                    <h3>📍 GPS Coordinates</h3>
-                    <div class="data-row">
-                        <span class="data-label">Latitude:</span>
-                        <span class="data-value" id="latitude">--</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Longitude:</span>
-                        <span class="data-value" id="longitude">--</span>
-                    </div>
-                </div>
-
-                <div class="data-section">
-                    <h3>📊 Device Information</h3>
-                    <div class="data-row">
-                        <span class="data-label">IMEI/ID:</span>
-                        <span class="data-value" id="imei">--</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Speed:</span>
-                        <span class="data-value" id="speed">-- km/h</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Altitude:</span>
-                        <span class="data-value" id="altitude">-- m</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">Last Update:</span>
-                        <span class="data-value" id="timestamp">--</span>
-                    </div>
-                </div>
-
-                <div class="instructions">
-                    <h4>📱 GPS Tracker Setup:</h4>
-                    <ol>
-                        <li>Get your server's public IP address</li>
-                        <li>Configure GPS tracker with IP and Port 5000</li>
-                        <li>Send test data or start GPS tracker</li>
-                        <li>Watch real-time location updates!</li>
-                    </ol>
+            <div class="status-card" id="statusCard">
+                <div class="status-dot"></div>
+                <div class="status-info">
+                    <h3>Device Status</h3>
+                    <p id="statusText">Awaiting GPS data...</p>
                 </div>
             </div>
 
-            <div class="map-container">
-                <div id="map"></div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-label">Device IMEI</span>
+                    <div class="stat-value" id="imei">--</div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Speed</span>
+                    <div class="stat-value"><span id="speed">0.0</span> <small>km/h</small></div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Altitude</span>
+                    <div class="stat-value"><span id="altitude">0</span> <small>m</small></div>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Network</span>
+                    <div class="stat-value" style="color: var(--secondary)">LTE Online</div>
+                </div>
             </div>
-        </div>
+
+            <div class="data-section">
+                <span class="stat-label">Live Coordinates</span>
+                <div class="coordinates-box">
+                    <div class="coord-row">
+                        <span style="color: var(--text-dim)">Latitude</span>
+                        <span id="latitude" class="stat-value">0.000000</span>
+                    </div>
+                    <div class="coord-row">
+                        <span style="color: var(--text-dim)">Longitude</span>
+                        <span id="longitude" class="stat-value">0.000000</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="data-section">
+                <span class="stat-label">System Deployment</span>
+                <div class="coordinates-box"
+                    style="font-size: 0.85rem; background: #fffbeb; border: 1px solid #fde68a;">
+                    <div class="coord-row">
+                        <span>Web Interface</span>
+                        <span style="color: var(--accent); font-weight: 600;">3.108.114.12:3000</span>
+                    </div>
+                    <div class="coord-row">
+                        <span>GPS TCP Port</span>
+                        <span style="color: var(--accent); font-weight: 600;">5000</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: auto;">
+                <p style="font-size: 0.75rem; color: var(--text-dim); text-align: center;">
+                    Last Sync: <span id="timestamp">--</span>
+                </p>
+            </div>
+        </aside>
+
+        <main class="map-section">
+            <div id="map"></div>
+            <div class="map-overlay">
+                <div class="overlay-card">Google Maps Live</div>
+                <div class="overlay-card" style="color: var(--secondary)">High Precision SVG Tracking</div>
+            </div>
+        </main>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Initialize map
-        const map = L.map('map').setView([0, 0], 2);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
-        }).addTo(map);
+        let map;
+        let vehicleMarker;
+        let polyline;
+        const vehiclePath = [];
 
-        let marker = null;
-        let circle = null;
+        // SVG Vehicle Icon
+        const vehicleSvg = `
+            <svg width="40" height="40" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="45" fill="white" stroke="#2563eb" stroke-width="5" />
+                <path d="M75 50L35 30V70L75 50Z" fill="#2563eb" />
+            </svg>
+        `;
 
-        // WebSocket connection
-        const socket = io();
-
-        // Get server IP
-        fetch('https://api.ipify.org?format=json')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('serverIP').textContent = data.ip;
-            })
-            .catch(() => {
-                document.getElementById('serverIP').textContent = 'localhost';
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 0, lng: 0 },
+                zoom: 2,
+                mapId: "fb92b8d002fde062", // Regular light map
+                disableDefaultUI: false,
+                zoomControl: true,
+                mapTypeControl: true,
+                streetViewControl: false,
+                fullscreenControl: true
             });
 
-        // Listen for location updates
+            polyline = new google.maps.Polyline({
+                path: [],
+                geodesic: true,
+                strokeColor: "#2563eb",
+                strokeOpacity: 0.8,
+                strokeWeight: 4,
+                map: map
+            });
+        }
+
+        // Initialize Google Map
+        window.onload = initMap;
+
+        const socket = io();
+
         socket.on('locationUpdate', (data) => {
-            console.log('Location update received:', data);
-            updateDisplay(data);
-        });
+            console.log('Update:', data);
+            const { latest, path } = data;
 
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
-
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-        });
-
-        function updateDisplay(data) {
-            const { latitude, longitude, imei, speed, altitude, timestamp } = data;
-
-            // Update status
-            const statusEl = document.getElementById('status');
-            if (latitude !== 0 && longitude !== 0) {
-                statusEl.className = 'status connected';
-                statusEl.innerHTML = '<div class="status-dot"></div><span>GPS Connected - Receiving Data</span>';
+            if (latest.latitude !== 0) {
+                updateUI(latest);
+                updateMap(latest.latitude, latest.longitude, path);
             }
+        });
 
-            // Update coordinates
-            document.getElementById('latitude').textContent = latitude.toFixed(6);
-            document.getElementById('longitude').textContent = longitude.toFixed(6);
-            document.getElementById('imei').textContent = imei || '--';
-            document.getElementById('speed').textContent = speed ? `${speed.toFixed(2)} km/h` : '0 km/h';
-            document.getElementById('altitude').textContent = altitude ? `${altitude.toFixed(2)} m` : '0 m';
-            
-            if (timestamp) {
-                const date = new Date(timestamp);
-                document.getElementById('timestamp').textContent = date.toLocaleString();
-            }
+        function updateUI(data) {
+            document.getElementById('statusCard').classList.add('connected');
+            document.getElementById('statusText').textContent = 'Stable Connection';
 
-            // Update map
-            if (latitude !== 0 && longitude !== 0) {
-                updateMap(latitude, longitude);
+            document.getElementById('latitude').textContent = data.latitude.toFixed(6);
+            document.getElementById('longitude').textContent = data.longitude.toFixed(6);
+            document.getElementById('imei').textContent = data.imei || 'GPS-99';
+            document.getElementById('speed').textContent = data.speed ? data.speed.toFixed(1) : '0.0';
+            document.getElementById('altitude').textContent = data.altitude ? data.altitude.toFixed(0) : '0';
+
+            if (data.timestamp) {
+                const date = new Date(data.timestamp);
+                document.getElementById('timestamp').textContent = date.toLocaleTimeString();
             }
         }
 
-        function updateMap(lat, lon) {
-            // Remove old marker and circle
-            if (marker) {
-                map.removeLayer(marker);
+        function updateMap(lat, lon, path) {
+            const position = { lat: lat, lng: lon };
+
+            // Update Polyline
+            if (path && path.length > 0) {
+                const googlePath = path.map(p => ({ lat: p[0], lng: p[1] }));
+                polyline.setPath(googlePath);
             }
-            if (circle) {
-                map.removeLayer(circle);
+
+            // Update Marker
+            if (!vehicleMarker) {
+                vehicleMarker = new google.maps.Marker({
+                    position: position,
+                    map: map,
+                    title: "Vehicle Location",
+                    icon: {
+                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(vehicleSvg),
+                        scaledSize: new google.maps.Size(40, 40),
+                        anchor: new google.maps.Point(20, 20)
+                    },
+                    optimized: false
+                });
+            } else {
+                vehicleMarker.setPosition(position);
             }
 
-            // Add new marker
-            marker = L.marker([lat, lon]).addTo(map);
-            marker.bindPopup(`<b>Current Location</b><br>Lat: ${lat.toFixed(6)}<br>Lon: ${lon.toFixed(6)}`).openPopup();
-
-            // Add accuracy circle
-            circle = L.circle([lat, lon], {
-                color: '#667eea',
-                fillColor: '#667eea',
-                fillOpacity: 0.2,
-                radius: 50
-            }).addTo(map);
-
-            // Center map on location
-            map.setView([lat, lon], 15);
+            // Center and zoom if needed
+            if (map.getZoom() < 5) {
+                map.setZoom(15);
+            }
+            map.panTo(position);
         }
 
-        // Load initial data
+        // Initial Load
         fetch('/api/location')
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
-                if (data.latitude !== 0 && data.longitude !== 0) {
-                    updateDisplay(data);
+                if (data.latest && data.latest.latitude !== 0) {
+                    updateUI(data.latest);
+                    if (map) updateMap(data.latest.latitude, data.latest.longitude, data.path);
                 }
-            })
-            .catch(error => console.error('Error loading initial data:', error));
+            });
     </script>
 </body>
+
 </html>

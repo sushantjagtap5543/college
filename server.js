@@ -12,7 +12,7 @@ const io = socketIO(server);
 const WEB_PORT = 3000;
 const GPS_PORT = 5000;
 
-// Store latest GPS data
+// Store latest GPS data and history
 let latestGPSData = {
     latitude: 0,
     longitude: 0,
@@ -21,6 +21,9 @@ let latestGPSData = {
     speed: 0,
     altitude: 0
 };
+
+let historicalPath = [];
+const MAX_HISTORY = 100;
 
 // Middleware
 app.use(express.static('public'));
@@ -31,18 +34,24 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API endpoint to get latest GPS data
+// API endpoint to get latest GPS data and history
 app.get('/api/location', (req, res) => {
-    res.json(latestGPSData);
+    res.json({
+        latest: latestGPSData,
+        path: historicalPath
+    });
 });
 
 // WebSocket connection for real-time updates
 io.on('connection', (socket) => {
     console.log('Client connected to WebSocket');
-    
-    // Send current location immediately
-    socket.emit('locationUpdate', latestGPSData);
-    
+
+    // Send current location and history immediately
+    socket.emit('locationUpdate', {
+        latest: latestGPSData,
+        path: historicalPath
+    });
+
     socket.on('disconnect', () => {
         console.log('Client disconnected from WebSocket');
     });
@@ -51,26 +60,37 @@ io.on('connection', (socket) => {
 // GPS TCP Server to receive data from GPS tracker
 const gpsServer = net.createServer((socket) => {
     console.log('GPS device connected from:', socket.remoteAddress);
-    
+
     socket.on('data', (data) => {
         const dataStr = data.toString();
         console.log('Raw GPS data received:', dataStr);
-        
+
         try {
             // Parse GPS data (this is a basic parser - adjust based on your GPS protocol)
             const parsedData = parseGPSData(dataStr);
-            
+
             if (parsedData) {
                 latestGPSData = {
                     ...parsedData,
                     timestamp: new Date().toISOString()
                 };
-                
+
                 console.log('Parsed GPS data:', latestGPSData);
-                
+
+                // Add to history
+                if (latestGPSData.latitude !== 0 && latestGPSData.longitude !== 0) {
+                    historicalPath.push([latestGPSData.latitude, latestGPSData.longitude]);
+                    if (historicalPath.length > MAX_HISTORY) {
+                        historicalPath.shift();
+                    }
+                }
+
                 // Broadcast to all connected web clients
-                io.emit('locationUpdate', latestGPSData);
-                
+                io.emit('locationUpdate', {
+                    latest: latestGPSData,
+                    path: historicalPath
+                });
+
                 // Send acknowledgment back to GPS device
                 socket.write('OK\n');
             }
@@ -78,11 +98,11 @@ const gpsServer = net.createServer((socket) => {
             console.error('Error parsing GPS data:', error);
         }
     });
-    
+
     socket.on('error', (err) => {
         console.error('GPS socket error:', err);
     });
-    
+
     socket.on('end', () => {
         console.log('GPS device disconnected');
     });
@@ -92,7 +112,7 @@ const gpsServer = net.createServer((socket) => {
 function parseGPSData(dataStr) {
     // Remove any whitespace
     const data = dataStr.trim();
-    
+
     // Try to parse as JSON first
     if (data.startsWith('{')) {
         try {
@@ -108,14 +128,14 @@ function parseGPSData(dataStr) {
             console.log('Not valid JSON');
         }
     }
-    
+
     // Parse GPRMC NMEA format: $GPRMC,timestamp,status,lat,N/S,lon,E/W,speed,course,date,...
     if (data.includes('$GPRMC') || data.includes('GPRMC')) {
         const parts = data.split(',');
         if (parts.length >= 9) {
             const lat = convertNMEAtoDecimal(parts[3], parts[4]);
             const lon = convertNMEAtoDecimal(parts[5], parts[6]);
-            
+
             if (lat !== null && lon !== null) {
                 return {
                     latitude: lat,
@@ -127,13 +147,13 @@ function parseGPSData(dataStr) {
             }
         }
     }
-    
+
     // Parse simple comma-separated format: IMEI,LAT,LON,SPEED,ALTITUDE
     const parts = data.split(',');
     if (parts.length >= 3) {
         const lat = parseFloat(parts[1]);
         const lon = parseFloat(parts[2]);
-        
+
         if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
             return {
                 latitude: lat,
@@ -144,7 +164,7 @@ function parseGPSData(dataStr) {
             };
         }
     }
-    
+
     console.log('Could not parse GPS data format');
     return null;
 }
@@ -152,20 +172,20 @@ function parseGPSData(dataStr) {
 // Convert NMEA coordinates to decimal degrees
 function convertNMEAtoDecimal(coord, direction) {
     if (!coord || !direction) return null;
-    
+
     const coordFloat = parseFloat(coord);
     if (isNaN(coordFloat)) return null;
-    
+
     // NMEA format: DDMM.MMMM for latitude, DDDMM.MMMM for longitude
     const degrees = Math.floor(coordFloat / 100);
     const minutes = coordFloat - (degrees * 100);
     let decimal = degrees + (minutes / 60);
-    
+
     // Apply direction
     if (direction === 'S' || direction === 'W') {
         decimal = -decimal;
     }
-    
+
     return decimal;
 }
 
