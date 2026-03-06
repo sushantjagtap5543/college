@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Tracker - College Project</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .server-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .server-info h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .info-item {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .info-item label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .info-item .value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 600;
+            font-family: 'Courier New', monospace;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            height: fit-content;
+        }
+
+        .map-container {
+            background: white;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #map {
+            height: 600px;
+            border-radius: 8px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status.connected .status-dot {
+            background: #28a745;
+        }
+
+        .status.disconnected .status-dot {
+            background: #dc3545;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .data-section {
+            margin-bottom: 20px;
+        }
+
+        .data-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .data-value {
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+
+        .copy-btn:active {
+            transform: scale(0.95);
+        }
+
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .instructions h4 {
+            color: #856404;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #856404;
+            font-size: 13px;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+        }
+
+        @media (max-width: 968px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛰️ GPS Tracker - College Project</h1>
+            <p style="color: #666; margin-top: 5px;">Real-time GPS Location Tracking System</p>
+            
+            <div class="server-info">
+                <h3>📡 Server Configuration</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <label>Your Server IP</label>
+                        <div class="value" id="serverIP">Loading...</div>
+                    </div>
+                    <div class="info-item">
+                        <label>GPS Data Port</label>
+                        <div class="value">5000</div>
+                    </div>
+                    <div class="info-item">
+                        <label>Web Interface Port</label>
+                        <div class="value">3000</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="status disconnected" id="status">
+                    <div class="status-dot"></div>
+                    <span>Waiting for GPS data...</span>
+                </div>
+
+                <div class="data-section">
+                    <h3>📍 GPS Coordinates</h3>
+                    <div class="data-row">
+                        <span class="data-label">Latitude:</span>
+                        <span class="data-value" id="latitude">--</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Longitude:</span>
+                        <span class="data-value" id="longitude">--</span>
+                    </div>
+                </div>
+
+                <div class="data-section">
+                    <h3>📊 Device Information</h3>
+                    <div class="data-row">
+                        <span class="data-label">IMEI/ID:</span>
+                        <span class="data-value" id="imei">--</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Speed:</span>
+                        <span class="data-value" id="speed">-- km/h</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Altitude:</span>
+                        <span class="data-value" id="altitude">-- m</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Last Update:</span>
+                        <span class="data-value" id="timestamp">--</span>
+                    </div>
+                </div>
+
+                <div class="instructions">
+                    <h4>📱 GPS Tracker Setup:</h4>
+                    <ol>
+                        <li>Get your server's public IP address</li>
+                        <li>Configure GPS tracker with IP and Port 5000</li>
+                        <li>Send test data or start GPS tracker</li>
+                        <li>Watch real-time location updates!</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="map-container">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([0, 0], 2);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        let marker = null;
+        let circle = null;
+
+        // WebSocket connection
+        const socket = io();
+
+        // Get server IP
+        fetch('https://api.ipify.org?format=json')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('serverIP').textContent = data.ip;
+            })
+            .catch(() => {
+                document.getElementById('serverIP').textContent = 'localhost';
+            });
+
+        // Listen for location updates
+        socket.on('locationUpdate', (data) => {
+            console.log('Location update received:', data);
+            updateDisplay(data);
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+        });
+
+        function updateDisplay(data) {
+            const { latitude, longitude, imei, speed, altitude, timestamp } = data;
+
+            // Update status
+            const statusEl = document.getElementById('status');
+            if (latitude !== 0 && longitude !== 0) {
+                statusEl.className = 'status connected';
+                statusEl.innerHTML = '<div class="status-dot"></div><span>GPS Connected - Receiving Data</span>';
+            }
+
+            // Update coordinates
+            document.getElementById('latitude').textContent = latitude.toFixed(6);
+            document.getElementById('longitude').textContent = longitude.toFixed(6);
+            document.getElementById('imei').textContent = imei || '--';
+            document.getElementById('speed').textContent = speed ? `${speed.toFixed(2)} km/h` : '0 km/h';
+            document.getElementById('altitude').textContent = altitude ? `${altitude.toFixed(2)} m` : '0 m';
+            
+            if (timestamp) {
+                const date = new Date(timestamp);
+                document.getElementById('timestamp').textContent = date.toLocaleString();
+            }
+
+            // Update map
+            if (latitude !== 0 && longitude !== 0) {
+                updateMap(latitude, longitude);
+            }
+        }
+
+        function updateMap(lat, lon) {
+            // Remove old marker and circle
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            if (circle) {
+                map.removeLayer(circle);
+            }
+
+            // Add new marker
+            marker = L.marker([lat, lon]).addTo(map);
+            marker.bindPopup(`<b>Current Location</b><br>Lat: ${lat.toFixed(6)}<br>Lon: ${lon.toFixed(6)}`).openPopup();
+
+            // Add accuracy circle
+            circle = L.circle([lat, lon], {
+                color: '#667eea',
+                fillColor: '#667eea',
+                fillOpacity: 0.2,
+                radius: 50
+            }).addTo(map);
+
+            // Center map on location
+            map.setView([lat, lon], 15);
+        }
+
+        // Load initial data
+        fetch('/api/location')
+            .then(response => response.json())
+            .then(data => {
+                if (data.latitude !== 0 && data.longitude !== 0) {
+                    updateDisplay(data);
+                }
+            })
+            .catch(error => console.error('Error loading initial data:', error));
+    </script>
+</body>
+</html>

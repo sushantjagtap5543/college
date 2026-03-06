@@ -1,0 +1,25 @@
+{
+  "name": "gps-tracker-project",
+  "version": "1.0.0",
+  "description": "GPS Tracking System - College Project",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "gps",
+    "tracker",
+    "location",
+    "maps"
+  ],
+  "author": "College Project",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
