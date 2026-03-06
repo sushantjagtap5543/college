@@ -19,15 +19,15 @@ const locations = [
 function sendGPSData(location, format = 'json') {
     return new Promise((resolve, reject) => {
         const client = new net.Socket();
-        
+
         client.connect(5000, 'localhost', () => {
             console.log(`Connected to GPS server`);
-            
+
             let data;
-            
+
             if (format === 'json') {
                 data = JSON.stringify({
-                    imei: 'TEST123456789',
+                    imei: '869727079043558',
                     lat: location.lat,
                     lon: location.lon,
                     speed: Math.random() * 60,
@@ -36,26 +36,26 @@ function sendGPSData(location, format = 'json') {
             } else if (format === 'csv') {
                 const speed = Math.random() * 60;
                 const altitude = Math.random() * 500;
-                data = `TEST123456789,${location.lat},${location.lon},${speed},${altitude}`;
+                data = `869727079043558,${location.lat},${location.lon},${speed},${altitude}`;
             }
-            
+
             console.log(`Sending: ${location.name}`);
             console.log(`Data: ${data}\n`);
-            
+
             client.write(data + '\n');
         });
-        
+
         client.on('data', (data) => {
             console.log(`Server response: ${data.toString()}`);
             client.destroy();
             resolve();
         });
-        
+
         client.on('error', (err) => {
             console.error(`Error: ${err.message}`);
             reject(err);
         });
-        
+
         client.on('close', () => {
             console.log('Connection closed\n');
         });
@@ -65,27 +65,27 @@ function sendGPSData(location, format = 'json') {
 async function runTest() {
     console.log('Starting GPS simulation...\n');
     console.log('Make sure the server is running (npm start)\n');
-    
+
     // Ask user for format
     const format = process.argv[2] || 'json';
     console.log(`Using format: ${format}\n`);
-    
+
     try {
         // Send data for each location with delay
         for (let i = 0; i < locations.length; i++) {
             await sendGPSData(locations[i], format);
-            
+
             if (i < locations.length - 1) {
                 console.log('Waiting 3 seconds before next location...\n');
                 await new Promise(resolve => setTimeout(resolve, 3000));
             }
         }
-        
+
         console.log('====================================');
         console.log('✅ Test completed!');
         console.log('====================================');
         console.log('\nCheck the web interface at: http://localhost:3000');
-        
+
     } catch (error) {
         console.error('\n❌ Test failed!');
         console.error('Make sure the server is running: npm start');

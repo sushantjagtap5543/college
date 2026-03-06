@@ -17,7 +17,7 @@ let latestGPSData = {
     latitude: 0,
     longitude: 0,
     timestamp: null,
-    imei: null,
+    imei: '869727079043558',
     speed: 0,
     altitude: 0
 };
