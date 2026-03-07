@@ -42,7 +42,11 @@ sudo fuser -k 3000/tcp 2>/dev/null || true
 echo "Clean up done!"
 echo "----------------------------------------------------------"
 
-echo ">>> Phase 2: Installing Prerequisites..."
+echo ">>> Phase 2: Installing Prerequisites & Optimizing Git..."
+# Prevent RPC failed; curl 92 HTTP/2 stream issues on AWS Lightsail
+git config --global http.postBuffer 524288000
+git config --global http.version HTTP/1.1
+
 # Update package list and upgrade system
 sudo apt-get update -y
 # Install curl, git, docker, and docker-compose if they don't exist
