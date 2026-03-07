@@ -345,8 +345,8 @@ const LandingPage = () => {
                         <div className="bg-slate-800/80 backdrop-blur-md border border-slate-700 rounded-3xl p-8 md:p-12 max-w-4xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8 md:gap-0">
                             <div className="text-left flex-1">
                                 <span className="text-brand-500 font-bold tracking-widest uppercase text-sm mb-2 block">Quick Configuration</span>
-                                <div className="text-2xl text-slate-300 mb-1">Server IP: <span className="font-mono text-white font-black bg-slate-900 px-3 py-1 rounded-lg border border-slate-700 ml-2">geosurepath.com</span></div>
-                                <div className="text-2xl text-slate-300">Port: <span className="font-mono text-white font-black bg-slate-900 px-3 py-1 rounded-lg border border-slate-700 ml-2">5023</span></div>
+                                <div className="text-2xl text-slate-300 mb-1">Server IP: <span className="font-mono text-white font-black bg-slate-900 px-3 py-1 rounded-lg border border-slate-700 ml-2">3.108.114.12</span></div>
+                                <div className="text-2xl text-slate-300">Port: <span className="font-mono text-white font-black bg-slate-900 px-3 py-1 rounded-lg border border-slate-700 ml-2">5000</span></div>
                             </div>
                             <button className="btn-primary py-4 px-8 text-lg rounded-2xl shadow-xl shadow-brand-500/20 w-full md:w-auto">View Supported Devices</button>
                         </div>
