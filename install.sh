@@ -79,6 +79,42 @@ echo "Starting all services in detached mode..."
 sudo docker-compose up -d
 
 echo "----------------------------------------------------------"
+echo ">>> Phase 4: Configuring Nginx Reverse Proxy (Fixing Port 80)..."
+if ! command -v nginx &> /dev/null; then
+    sudo apt-get install -y nginx
+fi
+
+# Configure Nginx to securely proxy port 80 to the Docker containers
+sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    # Frontend (React/Vite)
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+
+    # Backend API
+    location /api {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF'
+
+# Enable and restart Nginx
+sudo systemctl enable nginx || true
+sudo systemctl restart nginx
+echo "Nginx configured successfully!"
+echo "----------------------------------------------------------"
+
 echo ">>> Deployment Complete! GEOSUREPATH is running."
 echo ">>> Live Tracking / TCP Receivers are active on Port 5000."
 echo ">>> Web UI is available on Port 3000."
