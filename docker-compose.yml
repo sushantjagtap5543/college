@@ -68,7 +68,8 @@ services:
     restart: always
     ports:
       - "8082:8082" # Traccar API/Web
-      - "5000-5150:5000-5150" # GPS Protocols
+      - "5002-5022:5002-5022" # GPS Protocols (excluding 5000, 5001)
+      - "5024-5150:5024-5150" # GPS Protocols (excluding 5023)
     volumes:
       - ./traccar/traccar.xml:/opt/traccar/conf/traccar.xml:ro
       - traccardata:/opt/traccar/data

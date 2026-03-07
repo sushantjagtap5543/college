@@ -17,8 +17,28 @@ fi
 # Deep clean to prevent conflicts and free up space
 echo "Cleaning up dangling Docker images and volumes..."
 if command -v docker &> /dev/null; then
+    echo "Force removing any explicitly named leftover containers..."
+    sudo docker rm -f gps_postgres gps_redis gps_tcp_server gps_backend gps_frontend gps_traccar 2>/dev/null || true
     sudo docker system prune -af --volumes || true
 fi
+
+echo "Checking for local host processes blocking essential Docker ports (e.g. 5432, 6379, 8080)..."
+# Stop local postgres if it's running on the host
+sudo systemctl stop postgresql 2>/dev/null || true
+sudo systemctl disable postgresql 2>/dev/null || true
+# Stop local redis if it's running on the host
+sudo systemctl stop redis-server 2>/dev/null || true
+
+# Force kill anything holding essential Docker ports
+sudo fuser -k 5432/tcp 2>/dev/null || true
+sudo fuser -k 6379/tcp 2>/dev/null || true
+sudo fuser -k 8080/tcp 2>/dev/null || true
+sudo fuser -k 8082/tcp 2>/dev/null || true
+sudo fuser -k 5000/tcp 2>/dev/null || true
+sudo fuser -k 5001/tcp 2>/dev/null || true
+sudo fuser -k 5023/tcp 2>/dev/null || true
+sudo fuser -k 3000/tcp 2>/dev/null || true
+
 echo "Clean up done!"
 echo "----------------------------------------------------------"
 
