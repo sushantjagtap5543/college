@@ -1,83 +1,63 @@
 #!/bin/bash
 
-echo "======================================"
-echo "GPS Tracker Installation Script"
-echo "======================================"
-echo ""
+# Exit on error
+set -e
 
-# Check if Node.js is installed
-if ! command -v node &> /dev/null
-then
-    echo "❌ Node.js is not installed!"
-    echo ""
-    echo "Installing Node.js..."
-    
-    # Detect OS
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Ubuntu/Debian
-        if command -v apt-get &> /dev/null; then
-            echo "Detected Ubuntu/Debian system"
-            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-        # CentOS/RHEL/Fedora
-        elif command -v yum &> /dev/null; then
-            echo "Detected CentOS/RHEL/Fedora system"
-            curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
-            sudo yum install -y nodejs
-        else
-            echo "Please install Node.js manually from: https://nodejs.org/"
-            exit 1
-        fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        if command -v brew &> /dev/null; then
-            echo "Detected macOS with Homebrew"
-            brew install node
-        else
-            echo "Please install Homebrew first: https://brew.sh/"
-            echo "Then run: brew install node"
-            exit 1
-        fi
-    else
-        echo "Unsupported OS. Please install Node.js manually from: https://nodejs.org/"
-        exit 1
-    fi
-else
-    echo "✅ Node.js is already installed"
-    echo "   Version: $(node --version)"
+echo "=========================================================="
+echo "      GEOSUREPATH - AWS Lightsail Deployment Script       "
+echo "=========================================================="
+
+echo ">>> Phase 1: Cleaning up existing deployments..."
+# Stop and remove all existing docker-compose containers, networks, and images (if any)
+if command -v docker-compose &> /dev/null; then
+    echo "Stopping existing docker-compose services..."
+    sudo docker-compose down -v || true
 fi
 
-echo ""
-echo "======================================"
-echo "Installing Project Dependencies..."
-echo "======================================"
-echo ""
-
-# Install npm packages
-npm install
-
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "======================================"
-    echo "✅ Installation Complete!"
-    echo "======================================"
-    echo ""
-    echo "To start the GPS tracker server, run:"
-    echo "  node server.js"
-    echo ""
-    echo "The server will be available at:"
-    echo "  - Web Interface: http://3.108.114.12:3000"
-    echo "  - GPS Data Port: 5000"
-    echo ""
-    echo "Configure your GPS tracker with:"
-    echo "  - Server IP: 3.108.114.12"
-    echo "  - Server Port: 5000"
-    echo ""
-    echo "Note: If you are running locally for testing, use http://localhost:3000"
-    echo ""
-else
-    echo ""
-    echo "❌ Installation failed!"
-    echo "Please check the error messages above."
-    exit 1
+# Deep clean to prevent conflicts and free up space
+echo "Cleaning up dangling Docker images and volumes..."
+if command -v docker &> /dev/null; then
+    sudo docker system prune -af --volumes || true
 fi
+echo "Clean up done!"
+echo "----------------------------------------------------------"
+
+echo ">>> Phase 2: Installing Prerequisites..."
+# Update package list and upgrade system
+sudo apt-get update -y
+# Install curl, git, docker, and docker-compose if they don't exist
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common git
+
+if ! command -v docker &> /dev/null; then
+    echo "Installing Docker..."
+    sudo apt-get install -y docker.io
+    sudo systemctl enable docker
+    sudo systemctl start docker
+    sudo usermod -aG docker $USER
+fi
+
+if ! command -v docker-compose &> /dev/null; then
+    echo "Installing Docker-Compose..."
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+fi
+
+echo "Prerequisites installed successfully!"
+echo "----------------------------------------------------------"
+
+echo ">>> Phase 3: Building and Starting Services (including Port 5000)..."
+# Pull latest images and build the local ones
+sudo docker-compose pull
+echo "Building the platform containers..."
+sudo docker-compose build
+
+echo "Starting all services in detached mode..."
+sudo docker-compose up -d
+
+echo "----------------------------------------------------------"
+echo ">>> Deployment Complete! GEOSUREPATH is running."
+echo ">>> Live Tracking / TCP Receivers are active on Port 5000."
+echo ">>> Web UI is available on Port 3000."
+echo ">>> Traccar API is available on Port 8082."
+echo ">>> Remember to open Ports 80, 443, 3000, 5000, 8080, 8082 in the AWS Lightsail Firewall."
+echo "=========================================================="

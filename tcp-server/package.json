@@ -1,0 +1,15 @@
+{
+    "name": "gps-tcp-server",
+    "version": "1.0.0",
+    "description": "TCP server for raw GPS device data ingestion",
+    "main": "src/server.js",
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "nodemon src/server.js"
+    },
+    "dependencies": {
+        "dotenv": "^16.3.1",
+        "pg": "^8.11.3",
+        "redis": "^4.6.10"
+    }
+}

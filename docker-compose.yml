@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: gps_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: gps_admin
+      POSTGRES_PASSWORD: gps_strong_password
+      POSTGRES_DB: gps_saas
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d # Loads schema.sql on first start
+
+  redis:
+    image: redis:7-alpine
+    container_name: gps_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  tcp-server:
+    build: ./tcp-server
+    container_name: gps_tcp_server
+    restart: always
+    ports:
+      - "5000:5000" # GPS Port required by user
+      - "5023:5023" # GT06 Port
+      - "5001:5001" # Another Port
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+
+  backend:
+    build: ./backend
+    container_name: gps_backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - REDIS_HOST=redis
+      - JWT_SECRET=super_secret_key
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build: ./frontend
+    container_name: gps_frontend
+    restart: always
+    ports:
+      - "3000:3000" # Vite uses 3000 mapped
+    depends_on:
+      - backend
+
+  traccar:
+    image: traccar/traccar:latest
+    container_name: gps_traccar
+    restart: always
+    ports:
+      - "8082:8082" # Traccar API/Web
+      - "5000-5150:5000-5150" # GPS Protocols
+    volumes:
+      - ./traccar/traccar.xml:/opt/traccar/conf/traccar.xml:ro
+      - traccardata:/opt/traccar/data
+      - traccarlogs:/opt/traccar/logs
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
+  redisdata:
+  traccardata:
+  traccarlogs:

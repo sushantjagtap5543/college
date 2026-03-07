@@ -1,0 +1,240 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dark-bg: #0f172a;
+  --color-dark-card: #1e293b;
+  --color-dark-border: #334155;
+  --font-sans: "Inter", sans-serif;
+}
+
+:root {
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-500: #14b8a6;
+  --color-brand-600: #0d9488;
+  --color-brand-900: #134e4a;
+}
+
+.theme-blue {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-900: #1e3a8a;
+}
+
+.theme-orange {
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-900: #7c2d12;
+}
+
+html, body, #root {
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+body {
+  background-color: var(--color-brand-50);
+  color: #0f172a;
+  transition: background-color 300ms, color 300ms;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background-color: var(--color-dark-bg);
+  color: #f1f5f9;
+}
+
+/* Base text color overrides for form inputs */
+input, textarea, select {
+  color: #0f172a;
+}
+.dark input, .dark textarea, .dark select {
+  color: #f8fafc;
+}
+
+/* Premium Glassmorphism Card styling */
+.glass-panel {
+  background-color: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+  border-radius: 1.25rem;
+}
+
+.dark .glass-panel {
+  background-color: rgba(30, 41, 59, 0.75);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* High-end Buttons */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.75rem;
+  background-color: var(--color-brand-600);
+  color: white;
+  font-weight: 500;
+  transition: all 300ms;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-brand-500);
+  box-shadow: 0 0 15px rgba(20, 184, 166, 0.3);
+  transform: translateY(-2px);
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.75rem;
+  background-color: #ef4444;
+  color: white;
+  font-weight: 500;
+  transition: all 300ms;
+}
+
+.btn-danger:hover {
+  background-color: #f87171;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.75rem;
+  background-color: #f1f5f9;
+  color: #334155;
+  font-weight: 500;
+  transition: all 300ms;
+}
+
+.dark .btn-secondary {
+  background-color: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.dark .btn-secondary:hover {
+  background-color: #334155;
+}
+
+/* Status Badges */
+.badge-moving {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background-color: #d1fae5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.dark .badge-moving {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.badge-idle {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background-color: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.dark .badge-idle {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.badge-offline {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.dark .badge-offline {
+  background-color: rgba(30, 41, 59, 0.5);
+  color: #94a3b8;
+  border-color: #334155;
+}
+
+/* Thin Scrollbars for Denser UI */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.3);
+  border-radius: 20px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.2);
+}
+
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.6);
+}
+
+/* Base text color transitions for theme */
+.text-brand-500 {
+  color: var(--color-brand-500);
+}
+
+.bg-brand-500 {
+  background-color: var(--color-brand-500);
+}
+
+.border-brand-500 {
+  border-color: var(--color-brand-500);
+}
+
+.text-brand-600 {
+  color: var(--color-brand-600);
+}
+
+/* Leaflet Overrides for Dark Mode Maps */
+.dark .leaflet-layer,
+.dark .leaflet-control-zoom-in,
+.dark .leaflet-control-zoom-out,
+.dark .leaflet-control-attribution {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  border-radius: 1rem;
+  z-index: 10;
+}
