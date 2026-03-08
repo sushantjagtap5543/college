@@ -54,6 +54,7 @@ CREATE TABLE vehicles (
     plate_number VARCHAR(50) NOT NULL,
     vehicle_type VARCHAR(50), -- 'CAR', 'TRUCK', 'BIKE'
     icon_color VARCHAR(20) DEFAULT '#000000',
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

@@ -52,10 +52,37 @@ body {
 
 /* Base text color overrides for form inputs */
 input, textarea, select {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+}
+
+.dark input, .dark textarea, .dark select {
+  color: #0f172a !important;
+  background-color: #ffffff !important;
+}
+
+/* Force dark text on inputs with white background in dark mode */
+.dark input[class*="bg-white"], 
+.dark select[class*="bg-white"],
+.dark input.bg-white, 
+.dark select.bg-white {
+  color: #0f172a !important;
+}
+
+/* Ensure placeholder text is always visible */
+input::placeholder {
+  color: #94a3b8;
+}
+
+/* Style select options for cross-browser consistency */
+select option {
+  background-color: #ffffff;
   color: #0f172a;
 }
-.dark input, .dark textarea, .dark select {
-  color: #f8fafc;
+
+.dark select option {
+  background-color: #1e293b;
+  color: #f1f5f9;
 }
 
 /* Premium Glassmorphism Card styling */
