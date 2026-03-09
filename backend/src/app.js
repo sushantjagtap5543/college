@@ -81,8 +81,8 @@ const ensureAdminExists = async () => {
             const roleId = roleRes.rows[0].id;
 
             await pool.query(
-                "INSERT INTO users (role_id, name, email, password_hash, plain_password) VALUES ($1, $2, $3, $4, $5)",
-                [roleId, 'Super Admin', adminEmail, hash, adminPass]
+                "INSERT INTO users (role_id, name, email, password_hash) VALUES ($1, $2, $3, $4)",
+                [roleId, 'Super Admin', adminEmail, hash]
             );
             console.log("[INIT] Admin user provisioned successfully.");
         }
@@ -259,8 +259,8 @@ app.post('/api/register', async (req, res) => {
         const passwordHash = await bcrypt.hash(plainPassword, salt);
 
         const userResult = await pool.query(
-            "INSERT INTO users (role_id, name, email, password_hash, plain_password) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email",
-            [roleId, `${firstName} ${lastName}`, email, passwordHash, plainPassword]
+            "INSERT INTO users (role_id, name, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, email",
+            [roleId, `${firstName} ${lastName}`, email, passwordHash]
         );
         const newUserId = userResult.rows[0].id;
 
@@ -505,7 +505,7 @@ app.post('/api/reset-password', async (req, res) => {
 
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(newPassword, salt);
-        await pool.query("UPDATE users SET password_hash = $1, plain_password = $2 WHERE id = $3", [passwordHash, newPassword, userId]);
+        await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, userId]);
         res.json({ status: 'SUCCESS' });
     } catch (err) {
         console.error('Reset Password Error:', err);
@@ -631,11 +631,11 @@ app.get('/api/geofences', async (req, res) => {
 app.get('/api/admin/clients', async (req, res) => {
     try {
         const query = `
-            SELECT u.id, u.name, u.email, u.is_active, u.is_blocked, u.plain_password, COUNT(v.id) as vehicle_count
+            SELECT u.id, u.name, u.email, u.is_active, u.is_blocked, COUNT(v.id) as vehicle_count
             FROM users u
             LEFT JOIN vehicles v ON u.id = v.client_id
             WHERE u.role_id = (SELECT id FROM roles WHERE name = 'CLIENT')
-            GROUP BY u.id, u.name, u.email, u.is_active, u.is_blocked, u.plain_password
+            GROUP BY u.id, u.name, u.email, u.is_active, u.is_blocked
             ORDER BY u.created_at DESC
         `;
         const result = await pool.query(query);
