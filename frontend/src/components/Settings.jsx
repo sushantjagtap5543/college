@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     User, Bell, Shield, Smartphone, Globe, Moon, Sun,
     Save, Key, Mail, Lock, CheckCircle2, AlertTriangle,
-    Eye, EyeOff, Truck, Box
+    Eye, EyeOff, Truck, Box, Volume2, Play
 } from 'lucide-react';
 import {
     VEHICLE_ICON_OPTIONS,
@@ -12,10 +12,17 @@ import {
     getVehicleColorPref,
     setVehicleColorPref
 } from '../utils/statusIcons';
+import {
+    TONES,
+    getSavedToneId,
+    setSavedToneId,
+    previewTone
+} from '../utils/notificationTones';
 
 const tabs = [
     { id: 'profile', label: 'My Profile', icon: User },
     { id: 'assets', label: 'My Vehicles', icon: Truck },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'security', label: 'Security & Access', icon: Shield },
     { id: 'appearance', label: 'Appearance', icon: Sun },
     { id: 'audit', label: 'Audit Logs', icon: Globe },
@@ -26,6 +33,9 @@ export default function Settings({ user, fleet = [], theme, setTheme }) {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState(null);
+
+    // Notification tone state
+    const [selectedToneId, setSelectedToneId] = useState(() => getSavedToneId());
 
     // Form states
     const [name, setName] = useState(user?.name || '');
@@ -148,6 +158,59 @@ export default function Settings({ user, fleet = [], theme, setTheme }) {
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
                                         <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
                                     </div>
+                                </div>
+                            </section>
+                        )}
+
+                        {activeTab === 'notifications' && (
+                            <section className="space-y-6">
+                                <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 flex items-center gap-4">
+                                    <div className="p-3 bg-white rounded-xl text-blue-600 shadow-sm"><Bell size={20} /></div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 text-sm">Notification Tones</h4>
+                                        <p className="text-slate-500 text-xs">Choose the alert tone for GPS events. Serious alerts ring twice, normal alerts ring once.</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-xs text-amber-700 font-medium">
+                                    🔔 <strong>Serious alerts</strong> (Overspeed, SOS, Tamper, Power Cut, Fuel Theft, Towing) → tone plays <strong>2×</strong> + red blink.<br />
+                                    🔔 <strong>Normal alerts</strong> (Ignition ON/OFF, Geofence, Idle, GPS Lost) → tone plays <strong>1×</strong>.
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    {TONES.map(tone => (
+                                        <div
+                                            key={tone.id}
+                                            className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedToneId === tone.id
+                                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                                    : 'border-slate-100 bg-white hover:border-slate-300'
+                                                }`}
+                                            onClick={() => setSelectedToneId(tone.id)}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black ${selectedToneId === tone.id ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'
+                                                    }`}>{tone.id}</div>
+                                                <span className="font-bold text-slate-700 text-sm">{tone.label}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); previewTone(tone.id); }}
+                                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-blue-500 hover:text-white text-slate-500 transition-all"
+                                                title="Preview"
+                                            >
+                                                <Play size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="pt-4">
+                                    <button
+                                        onClick={() => { setSavedToneId(selectedToneId); previewTone(selectedToneId); setSuccess(true); setTimeout(() => setSuccess(false), 2000); }}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-sm uppercase tracking-widest shadow-lg shadow-blue-200 transition-all flex items-center gap-2"
+                                    >
+                                        <Volume2 size={16} /> Save Tone Preference
+                                    </button>
                                 </div>
                             </section>
                         )}

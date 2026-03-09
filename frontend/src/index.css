@@ -311,3 +311,13 @@ select option {
   border-radius: 1rem;
   z-index: 10;
 }
+/* === Alert Blink Animation for Critical GPS Alerts ===*/
+@keyframes alertBlink {
+  0%   { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+
+@keyframes alertBorderPulse {
+  0%   { box-shadow: 0 0 0 3px rgba(239,68,68,0.5), 0 10px 30px rgba(0,0,0,0.2); }
+  100% { box-shadow: 0 0 0 10px rgba(239,68,68,0.05), 0 10px 30px rgba(0,0,0,0.2); }
+}

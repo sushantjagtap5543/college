@@ -100,6 +100,14 @@ import {
     getVehicleColorPref,
     setVehicleColorPref
 } from './utils/statusIcons';
+import {
+    TONES,
+    getSavedToneId,
+    setSavedToneId,
+    playNormalAlert,
+    playSeriousAlert,
+    previewTone
+} from './utils/notificationTones';
 
 // (Moved to shared utils)
 
@@ -2272,6 +2280,19 @@ export default function App() {
     useEffect(() => { localStorage.setItem('theme', theme); }, [theme]);
     const [wsStatus, setWsStatus] = useState('disconnected');
 
+    // --- Global Notification Toast State ---
+    const [toasts, setToasts] = useState([]);
+    const addToast = (alert) => {
+        const id = Date.now() + Math.random();
+        setToasts(prev => [{ ...alert, id, createdAt: new Date() }, ...prev].slice(0, 6));
+        // Play tone based on severity
+        const toneId = getSavedToneId();
+        const isSerious = ['critical'].includes(alert.severity);
+        if (isSerious) playSeriousAlert(toneId);
+        else playNormalAlert(toneId);
+    };
+    const dismissToast = (id) => setToasts(prev => prev.filter(t => t.id !== id));
+
     const handleLogin = (userData) => {
         setUser(userData);
         localStorage.setItem('geosurepath_user', JSON.stringify(userData));
@@ -2354,11 +2375,76 @@ export default function App() {
         socket.on('connect', () => setWsStatus('connected'));
         socket.on('LOCATION_UPDATE', (msg) => {
             if (msg.imei) {
-                setFleet(prev => prev.map(v => v.id === msg.imei
-                    ? { ...v, lat: parseFloat(msg.lat), lng: parseFloat(msg.lng), speed: parseInt(msg.speed) || 0, status: parseInt(msg.speed) > 2 ? 'moving' : 'idle' }
-                    : v
-                ));
+                setFleet(prev => {
+                    const updated = prev.map(v => {
+                        if (v.id !== msg.imei) return v;
+                        const prevIgnition = v.ignition;
+                        const newIgnition = msg.ignition === '1' || msg.ignition === true || (parseInt(msg.speed) > 0);
+                        const newV = {
+                            ...v,
+                            lat: parseFloat(msg.lat),
+                            lng: parseFloat(msg.lng),
+                            speed: parseInt(msg.speed) || 0,
+                            heading: parseInt(msg.heading) || 0,
+                            status: parseInt(msg.speed) > 2 ? 'moving' : 'idle',
+                            ignition: newIgnition,
+                        };
+                        // Emit ignition ON/OFF toast
+                        if (prevIgnition !== undefined && prevIgnition !== newIgnition) {
+                            const type = newIgnition ? 'IGNITION_ON' : 'IGNITION_OFF';
+                            const def = ALERT_TYPES[type];
+                            addToast({
+                                type,
+                                severity: def.severity,
+                                icon: def.icon,
+                                color: def.color,
+                                bg: def.bg,
+                                border: def.border,
+                                title: def.label,
+                                message: `Vehicle "${v.name}" ${newIgnition ? 'ignition switched ON' : 'ignition switched OFF'}.`,
+                                vehicle: { name: v.name, imei: v.id, plate: v.plate || 'N/A' },
+                                coords: `${parseFloat(msg.lat).toFixed(5)}, ${parseFloat(msg.lng).toFixed(5)}`,
+                            });
+                        }
+                        // Overspeed alert
+                        const speedLimit = 80;
+                        if (parseInt(msg.speed) > speedLimit && v.speed <= speedLimit) {
+                            const def = ALERT_TYPES.OVERSPEED;
+                            addToast({
+                                type: 'OVERSPEED',
+                                severity: def.severity,
+                                icon: def.icon,
+                                color: def.color,
+                                bg: def.bg,
+                                border: def.border,
+                                title: def.label,
+                                message: `Vehicle "${v.name}" is speeding at ${msg.speed} km/h (limit: ${speedLimit} km/h).`,
+                                vehicle: { name: v.name, imei: v.id, plate: v.plate || 'N/A' },
+                                coords: `${parseFloat(msg.lat).toFixed(5)}, ${parseFloat(msg.lng).toFixed(5)}`,
+                            });
+                        }
+                        return newV;
+                    });
+                    return updated;
+                });
             }
+        });
+        // Listen for backend-emitted GPS alerts (SOS, geofence, tamper, etc.)
+        socket.on('GPS_ALERT', (alert) => {
+            const def = ALERT_TYPES[alert.type] || ALERT_TYPES.GPS_LOST;
+            addToast({
+                type: alert.type,
+                severity: def.severity,
+                icon: def.icon,
+                color: def.color,
+                bg: def.bg,
+                border: def.border,
+                title: def.label,
+                message: alert.message || `Alert triggered for IMEI ${alert.imei}.`,
+                vehicle: { name: alert.vehicleName || alert.imei, imei: alert.imei, plate: alert.plate || 'N/A' },
+                coords: alert.lat && alert.lng ? `${parseFloat(alert.lat).toFixed(5)}, ${parseFloat(alert.lng).toFixed(5)}` : 'N/A',
+                geofenceName: alert.geofenceName || null,
+            });
         });
         socket.on('disconnect', () => setWsStatus('disconnected'));
 
@@ -2379,6 +2465,75 @@ export default function App() {
     return (
         <ErrorBoundary>
             <Router>
+                {/* Global Alert Toast Panel */}
+                <div className="fixed top-5 right-5 z-[9999] flex flex-col gap-3 w-[380px] max-w-[95vw] pointer-events-none">
+                    <AnimatePresence>
+                        {toasts.map(toast => {
+                            const isSerious = toast.severity === 'critical';
+                            return (
+                                <motion.div
+                                    key={toast.id}
+                                    initial={{ opacity: 0, x: 80, scale: 0.92 }}
+                                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                                    exit={{ opacity: 0, x: 80, scale: 0.88 }}
+                                    transition={{ duration: 0.28 }}
+                                    className="pointer-events-auto"
+                                >
+                                    <div
+                                        className={`rounded-2xl border-2 shadow-2xl overflow-hidden ${isSerious
+                                                ? 'animate-pulse-border'
+                                                : ''
+                                            }`}
+                                        style={{
+                                            background: toast.bg || '#fff',
+                                            borderColor: toast.border || '#e2e8f0',
+                                            boxShadow: isSerious ? `0 0 0 3px ${toast.color}40, 0 10px 30px rgba(0,0,0,0.2)` : '0 10px 30px rgba(0,0,0,0.12)',
+                                            animation: isSerious ? 'alertBlink 0.7s ease-in-out infinite alternate' : 'none',
+                                        }}
+                                    >
+                                        <div className="p-4">
+                                            <div className="flex items-start gap-3">
+                                                <div className="text-2xl mt-0.5 shrink-0">{toast.icon}</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-start gap-2">
+                                                        <span className="text-xs font-black uppercase tracking-widest" style={{ color: toast.color }}>
+                                                            {isSerious && '🔴 '}{toast.title}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => dismissToast(toast.id)}
+                                                            className="text-slate-400 hover:text-slate-600 shrink-0 mt-0.5"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-sm font-semibold text-slate-800 mt-1 leading-snug">{toast.message}</p>
+                                                    {toast.geofenceName && (
+                                                        <p className="text-xs text-slate-600 mt-1 font-medium">📌 Zone: <span className="font-bold">{toast.geofenceName}</span></p>
+                                                    )}
+                                                    <div className="mt-2 grid grid-cols-2 gap-1.5 text-[10px] font-mono text-slate-500">
+                                                        <span>🚗 {toast.vehicle?.name}</span>
+                                                        <span>🪪 {toast.vehicle?.plate}</span>
+                                                        <span className="col-span-2">📡 IMEI: {toast.vehicle?.imei}</span>
+                                                        <span className="col-span-2">📍 {toast.coords}</span>
+                                                        <span className="col-span-2 text-right opacity-60">{toast.createdAt?.toLocaleTimeString()}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Blink bar for serious alerts */}
+                                        {isSerious && (
+                                            <div
+                                                className="h-1 w-full"
+                                                style={{ background: toast.color, animation: 'alertBlink 0.7s ease-in-out infinite alternate' }}
+                                            />
+                                        )}
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
+                    </AnimatePresence>
+                </div>
+
                 {!user ? (
                     <Routes>
                         <Route path="/" element={<RegistrationPage onLogin={handleLogin} />} />
