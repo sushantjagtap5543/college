@@ -298,6 +298,26 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
         }
     };
 
+    const handleUpdateClient = async (userId, updateData) => {
+        try {
+            const req = await fetch(`${API_BASE}/api/admin/clients/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, ...updateData })
+            });
+            const data = await req.json();
+            if (data.status === 'SUCCESS') {
+                // fetchAdminData will be called by handleUpdateBilling or here
+                fetchAdminData();
+            } else {
+                alert(data.message || 'Client update failed.');
+            }
+        } catch (err) {
+            console.error('Update Client Error:', err);
+            alert('Network error during client update.');
+        }
+    };
+
     const handleUpdateBilling = async (userId, billingData) => {
         try {
             const req = await fetch(`${API_BASE}/api/admin/clients/${userId}/billing`, {
