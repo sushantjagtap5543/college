@@ -1019,15 +1019,44 @@ const RegistrationPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [vehicles, setVehicles] = useState([{ imei: '', name: '', plate: '' }]);
     const [error, setError] = useState('');
+    const [otpSent, setOtpSent] = useState(false);
+    const [otpInput, setOtpInput] = useState('');
+    const [isVerified, setIsVerified] = useState(false);
+    const [otpError, setOtpError] = useState('');
+
+    const handleSendOtp = () => {
+        if (!/^[0-9]{10}$/.test(mobile)) {
+            setOtpError('Enter a valid 10-digit mobile number first.');
+            return;
+        }
+        setOtpError('');
+        setOtpSent(true);
+        // Mock OTP is 1234
+    };
+
+    const handleVerifyOtp = () => {
+        if (otpInput === '1234') {
+            setIsVerified(true);
+            setOtpError('');
+            setOtpSent(false);
+        } else {
+            setOtpError('Invalid OTP. Use 1234 for testing.');
+        }
+    };
+
 
     const handleRegister = async (e) => {
         e.preventDefault();
         setError('');
 
-        // Validation
-        const mobileRegex = /^[0-9]{10}$/;
-        if (!mobileRegex.test(mobile)) {
-            setError('Contact Number must be exactly 10 digits.');
+        if (!isVerified) {
+            setError('Please verify your mobile number via OTP before registering.');
+            return;
+        }
+
+        const plateRegex = /^[A-Z]{2}[ -]?[0-9]{1,2}[ -]?[A-Z]{1,2}[ -]?[0-9]{4}$/i;
+        if (vehicles.some(v => !plateRegex.test(v.plate))) {
+            setError('Invalid Indian Vehicle Plate format (e.g. MH 12 AB 1234).');
             return;
         }
 
@@ -1110,15 +1139,28 @@ const RegistrationPage = () => {
                                         {[
                                             { l: 'Full Name', v: name, s: setName, i: UserCircle, t: 'text', p: 'e.g. John Doe' },
                                             { l: 'Email Address', v: email, s: setEmail, i: MapIcon, t: 'email', p: 'e.g. user@domain.com' },
-                                            { l: 'Mobile Number', v: mobile, s: setMobile, i: Smartphone, t: 'tel', p: '10-Digit Mobile Number' },
+                                            { l: 'Mobile Number', v: mobile, s: setMobile, i: Smartphone, t: 'tel', p: '10-Digit Mobile Number', isMobile: true },
                                             { l: 'Password', v: password, s: setPassword, i: Shield, t: 'password', p: 'Strong Password' }
                                         ].map((f, i) => (
                                             <div key={i} className="group">
-                                                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">{f.l}</label>
+                                                <div className="flex justify-between items-center mb-2 pl-1">
+                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] group-focus-within:text-[#10b981] transition-colors">{f.l}</label>
+                                                    {f.isMobile && isVerified && <span className="text-[#10b981] text-[9px] font-black uppercase tracking-widest flex items-center gap-1"><CheckCircle2 size={10} /> Verified</span>}
+                                                </div>
                                                 <div className="relative">
                                                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><f.i size={16} /></div>
-                                                    <input required type={f.t} value={f.v} onChange={e => f.s(e.target.value)} placeholder={f.p} className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                                    <input required={!f.isMobile || !isVerified} type={f.t} value={f.v} onChange={e => f.s(e.target.value)} disabled={f.isMobile && isVerified} placeholder={f.p} className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner disabled:opacity-50" />
+                                                    {f.isMobile && !isVerified && !otpSent && (
+                                                        <button type="button" onClick={handleSendOtp} className="absolute right-2 top-2 bottom-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all">Send OTP</button>
+                                                    )}
                                                 </div>
+                                                {f.isMobile && otpSent && (
+                                                    <div className="mt-3 flex gap-2 animate-in fade-in slide-in-from-top-2">
+                                                        <input type="text" maxLength={4} value={otpInput} onChange={e => setOtpInput(e.target.value)} placeholder="Enter 1234" className="w-full px-4 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 focus:border-blue-500 rounded-xl outline-none text-center text-sm font-black tracking-[0.5em]" />
+                                                        <button type="button" onClick={handleVerifyOtp} className="bg-blue-500 text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">Verify</button>
+                                                    </div>
+                                                )}
+                                                {f.isMobile && otpError && <div className="mt-2 text-rose-500 text-[9px] font-black uppercase tracking-widest"><AlertTriangle size={10} className="inline mr-1" />{otpError}</div>}
                                             </div>
                                         ))}
                                     </div>
@@ -1662,8 +1704,8 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                         ))}
                     </MarkerClusterGroup>
 
-                    {/* Active Geofences Visualization */}
-                    {activeTab === 'Geofences' && geofences.map(gf => {
+                    {/* Active Geofences Visualization - Always Visible */}
+                    {geofences.map(gf => {
                         if (gf.fence_type === 'CIRCLE') {
                             return <Circle key={gf.id} center={[gf.coordinates[0], gf.coordinates[1]]} radius={gf.coordinates[2]} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 }} />;
                         } else if (gf.fence_type === 'rectangle' || (gf.fence_type === 'POLYGON' && gf.coordinates.length === 2)) {
@@ -2078,7 +2120,8 @@ export default function App() {
 
     const [fleet, setFleet] = useState([]);
     const [theme, setTheme] = useState('dark');
-    const [mapTile, setMapTile] = useState('satellite');
+    const [mapTile, setMapTile] = useState(localStorage.getItem('mapTile') || 'street');
+    useEffect(() => { localStorage.setItem('mapTile', mapTile); }, [mapTile]);
     const [wsStatus, setWsStatus] = useState('disconnected');
 
     const handleLogin = (userData) => {

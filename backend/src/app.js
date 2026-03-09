@@ -225,14 +225,8 @@ app.post('/api/demo-login', async (req, res) => {
 app.get('/api/inventory/check', async (req, res) => {
     const { imei } = req.query;
     try {
-        const result = await pool.query("SELECT sim_number, is_assigned FROM device_inventory WHERE imei = $1", [imei]);
-        if (result.rows.length === 0) {
-            return res.json({ status: 'ERROR', message: 'IMEI not found in stock.' });
-        }
-        if (result.rows[0].is_assigned) {
-            return res.json({ status: 'ERROR', message: 'IMEI is already assigned.' });
-        }
-        res.json({ status: 'SUCCESS', sim: result.rows[0].sim_number });
+        // Validation removed: Allow any 15-digit IMEI to pass the pre-check
+        res.json({ status: 'SUCCESS', sim: '0000000000' });
     } catch (err) {
         res.status(500).json({ status: 'ERROR', message: 'Failed to validate IMEI.' });
     }
@@ -268,11 +262,7 @@ app.post('/api/register', async (req, res) => {
         for (const v of vehicles) {
             const { imei, vehicleName, plateNumber } = v;
 
-            // Validate IMEI
-            const inventoryCheck = await pool.query("SELECT * FROM device_inventory WHERE imei = $1", [imei]);
-            if (inventoryCheck.rows.length === 0 || inventoryCheck.rows[0].is_assigned) {
-                throw new Error(`IMEI ${imei} is invalid or already assigned.`);
-            }
+            // Removed strict IMEI stock validation to allow free registration
 
             // Ensure device exists
             let deviceQuery = await pool.query("SELECT id FROM devices WHERE imei = $1", [imei]);

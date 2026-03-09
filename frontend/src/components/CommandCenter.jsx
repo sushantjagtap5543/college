@@ -14,6 +14,7 @@ export default function CommandCenter({ fleet = [] }) {
         { id: 1, device: 'Truck Alpha', command: 'Engine Stop', status: 'SUCCESS', time: '10:45 AM' },
         { id: 2, device: 'Van Beta', command: 'Refresh Loc', status: 'FAILED', time: '09:12 AM' },
     ]);
+    const [engineStates, setEngineStates] = useState({}); // Track local engine state per device id
     const [status, setStatus] = useState(null);
     const [securityCode, setSecurityCode] = useState('');
     const [userCodeInput, setUserCodeInput] = useState('');
@@ -97,6 +98,10 @@ export default function CommandCenter({ fleet = [] }) {
 
             if (data.status === 'SUCCESS') {
                 setStatus({ type: 'success', message: 'Command dispatched successfully.' });
+                // Update local execution toggle state
+                if (commandType === 'engine_stop') setEngineStates({ ...engineStates, [selectedDevice]: 'OFF' });
+                if (commandType === 'engine_resume') setEngineStates({ ...engineStates, [selectedDevice]: 'ON' });
+                setCommandType('');
             } else {
                 setStatus({ type: 'error', message: data.message || 'Dispatch failed.' });
             }
@@ -147,7 +152,12 @@ export default function CommandCenter({ fleet = [] }) {
                                 <Terminal size={16} className="text-blue-600" /> Step 2: Command Selection
                             </h3>
                             <div className="grid grid-cols-2 gap-4">
-                                {commands.map(cmd => (
+                                {commands.filter(cmd => {
+                                    const currentEngineState = engineStates[selectedDevice] || 'ON';
+                                    if (cmd.id === 'engine_stop' && currentEngineState === 'OFF') return false;
+                                    if (cmd.id === 'engine_resume' && currentEngineState !== 'OFF') return false;
+                                    return true;
+                                }).map(cmd => (
                                     <button
                                         key={cmd.id}
                                         onClick={() => handleCommandSelect(cmd.id)}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Shield, RefreshCcw, Map, ArrowRight, Plus, X, Search,
-    AlertCircle, Server, Database, Users, Activity, Clock, Zap, Target, Layers, Settings, ChevronRight
+    AlertCircle, Server, Database, Users, Activity, Clock, Zap, Target, Layers, Settings, ChevronRight, Cpu
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
