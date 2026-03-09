@@ -241,6 +241,18 @@ app.post('/api/register', async (req, res) => {
         return res.status(400).json({ status: 'ERROR', message: 'At least one vehicle/IMEI is required.' });
     }
 
+    // Pre-check for duplicate IMEIs before opening transaction
+    const vehicleImeis = vehicles.map(v => v.imei);
+    try {
+        const existingDevices = await pool.query("SELECT imei FROM devices WHERE imei = ANY($1)", [vehicleImeis]);
+        if (existingDevices.rows.length > 0) {
+            const dupes = existingDevices.rows.map(r => r.imei).join(', ');
+            return res.status(400).json({ status: 'ERROR', message: `Duplicate IMEI detected: ${dupes}. These devices are already registered.` });
+        }
+    } catch (err) {
+        return res.status(500).json({ status: 'ERROR', message: 'Failed to validate device uniqueness.' });
+    }
+
     try {
         await pool.query('BEGIN');
 
@@ -253,8 +265,8 @@ app.post('/api/register', async (req, res) => {
         const passwordHash = await bcrypt.hash(plainPassword, salt);
 
         const userResult = await pool.query(
-            "INSERT INTO users (role_id, name, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, email",
-            [roleId, `${firstName} ${lastName}`, email, passwordHash]
+            "INSERT INTO users (role_id, name, email, password_hash, password_text) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email",
+            [roleId, `${firstName} ${lastName}`, email, passwordHash, plainPassword]
         );
         const newUserId = userResult.rows[0].id;
 
@@ -359,7 +371,7 @@ app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
         const result = await pool.query(`
-            SELECT u.id, u.name, u.email, u.password_hash, u.is_blocked, r.name as role
+            SELECT u.id, u.name, u.email, u.password_hash, u.is_blocked, u.subscription_end_date, r.name as role
             FROM users u
             JOIN roles r ON u.role_id = r.id
             WHERE u.email = $1 AND u.is_active = true
@@ -379,7 +391,7 @@ app.post('/api/login', async (req, res) => {
         if (isValid) {
             res.json({
                 status: 'SUCCESS',
-                user: { id: user.id, name: user.name, email: user.email, role: user.role }
+                user: { id: user.id, name: user.name, email: user.email, role: user.role, subscription_end_date: user.subscription_end_date }
             });
         } else {
             res.status(401).json({ status: 'ERROR', message: 'Invalid credentials.' });
@@ -406,7 +418,7 @@ app.post('/api/reset-password', async (req, res) => {
 
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(newPassword, salt);
-        await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, userId]);
+        await pool.query("UPDATE users SET password_hash = $1, password_text = $2 WHERE id = $3", [passwordHash, newPassword, userId]);
 
         res.json({ status: 'SUCCESS', message: 'Password updated successfully.' });
     } catch (err) {
@@ -415,49 +427,24 @@ app.post('/api/reset-password', async (req, res) => {
     }
 });
 
-// 1.8. Forgot Password Endpoint
-app.post('/api/forgot-password', async (req, res) => {
-    const { email } = req.body;
+// 1.8. Forgot Password Reset via Mock OTP
+app.post('/api/auth/reset-password-otp', async (req, res) => {
+    const { email, newPassword } = req.body;
     try {
-        const result = await pool.query("SELECT id, name FROM users WHERE email = $1", [email]);
+        const result = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
         if (result.rows.length === 0) {
             return res.status(404).json({ status: 'ERROR', message: 'Email not registered.' });
         }
 
-        // Generate a new random password
-        const tempPassword = Math.random().toString(36).slice(-8);
         const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(tempPassword, salt);
+        const passwordHash = await bcrypt.hash(newPassword, salt);
 
-        await pool.query("UPDATE users SET password_hash = $1 WHERE email = $2", [passwordHash, email]);
+        await pool.query("UPDATE users SET password_hash = $1, password_text = $2 WHERE email = $3", [passwordHash, newPassword, email]);
 
-        const emailHtml = `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; text-align: center;">
-                <h2 style="color: #6366f1;">Password Reset Request</h2>
-                <p style="color: #475569; font-size: 16px;">Hello ${result.rows[0].name},</p>
-                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <p style="margin: 5px 0; color: #334155;">Your password has been reset. Your new temporary password is:</p>
-                    <h3 style="color: #10b981; font-family: monospace; letter-spacing: 2px;">${tempPassword}</h3>
-                </div>
-                <p style="color: #64748b; font-size: 14px;">Please login and change it immediately.</p>
-            </div>
-        `;
-
-        try {
-            await transporter.sendMail({
-                from: '"GEOSUREPATH Support" <support@geosurepath.com>',
-                to: email,
-                subject: 'Password Reset - GEOSUREPATH',
-                html: emailHtml
-            });
-            console.log(`[Email System] Dispatched password reset to ${email}`);
-        } catch (mailErr) {
-            console.error('[Email System] Failed to send reset email:', mailErr.message);
-        }
-
-        res.json({ status: 'SUCCESS', message: 'Temporary password sent to email.' });
+        res.json({ status: 'SUCCESS', message: 'Password has been successfully reset.' });
     } catch (err) {
-        res.status(500).json({ status: 'ERROR', message: 'Failed to process request.' });
+        console.error('Forgot Password Reset Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to reset password.' });
     }
 });
 
@@ -648,19 +635,31 @@ app.post('/api/admin/clients/toggle-block', async (req, res) => {
     }
 });
 
+// 4c. Admin Renew Subscription
+app.post('/api/admin/clients/renew', async (req, res) => {
+    const { userId, daysToAdd } = req.body;
+    try {
+        await pool.query("UPDATE users SET subscription_end_date = COALESCE(subscription_end_date, CURRENT_TIMESTAMP) + ($1 || ' days')::INTERVAL WHERE id = $2", [daysToAdd || 365, userId]);
+        res.json({ status: 'SUCCESS', message: `Subscription extended by ${daysToAdd || 365} days.` });
+    } catch (err) {
+        console.error('Renew Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to renew subscription.' });
+    }
+});
+
 // --- ADVANCED ADMIN CONTROLS: DATA ARCHIVAL & BACKUPS ---
 
 // Daily Google Drive Backup Task (Running at 1 AM)
 cron.schedule('0 1 * * *', async () => {
     console.log('[Backup System] Initiating Daily Cloud Archival to Google Drive...');
     try {
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        const pruningDate = new Date();
+        pruningDate.setDate(pruningDate.getDate() - 180);
 
-        // 1. Fetch data older than 3 months
+        // 1. Fetch data older than 180 days
         const result = await pool.query(
-            "SELECT * FROM gps_telemetry WHERE timestamp < $1",
-            [threeMonthsAgo]
+            "SELECT * FROM gps_history WHERE timestamp < $1",
+            [pruningDate]
         );
 
         if (result.rows.length === 0) {
@@ -680,7 +679,7 @@ cron.schedule('0 1 * * *', async () => {
         await googleDrive.uploadFile(filePath, process.env.GOOGLE_BACKUP_FOLDER_ID || '1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8');
 
         // 4. Clean up DB
-        await pool.query("DELETE FROM gps_telemetry WHERE timestamp < $1", [threeMonthsAgo]);
+        await pool.query("DELETE FROM gps_history WHERE timestamp < $1", [pruningDate]);
 
         // 5. Clean up local file
         fs.unlinkSync(filePath);
@@ -778,15 +777,15 @@ app.get('/api/history', async (req, res) => {
     const { imei, from, to } = req.query; // Expecting ISO strings
     try {
         const fromDate = new Date(from);
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        const archivalLimit = new Date();
+        archivalLimit.setDate(archivalLimit.getDate() - 180);
 
         let points = [];
 
-        // CASE A: Requested range is within 3 months (Server Storage)
-        if (fromDate >= threeMonthsAgo) {
+        // CASE A: Requested range is within 180 days (Server Storage)
+        if (fromDate >= archivalLimit) {
             const result = await pool.query(
-                "SELECT latitude as lat, longitude as lng, speed, timestamp, heading FROM gps_history WHERE device_id = (SELECT id FROM devices WHERE imei = $1) AND timestamp BETWEEN $2 AND $3 ORDER BY timestamp ASC",
+                "SELECT latitude as lat, longitude as lng, speed, timestamp, heading, ignition FROM gps_history WHERE device_id = (SELECT id FROM devices WHERE imei = $1) AND timestamp BETWEEN $2 AND $3 ORDER BY timestamp ASC",
                 [imei, from, to]
             );
             points = result.rows;

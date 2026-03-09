@@ -1,119 +1,68 @@
-# GeoSurePath — Premium GPS Vehicle Tracking SaaS
+# GeoSurePath - GPS Tracking Platform
 
-![GeoSurePath Logo](/logo.png)
+A comprehensive enterprise-grade platform for real-time asset intelligence, providing zero-latency vehicle tracking, robust telemetry data management, and secure administrative controls.
 
-A high-performance, executive-grade GPS vehicle tracking platform featuring a unified design system, real-time telemetry, and advanced fleet control.
+## System Architecture
 
----
+The GeoSurePath platform consists of:
+- **Frontend Dashboard:** A high-performance React application utilizing TailwindCSS for styling and Leaflet for geospatial visualization.
+- **Backend API:** An Express/Node.js service for command queuing, device management, billing controls, and history curation.
+- **Database:** PostgreSQL handling primary relationships (clients, devices, commands), postGIS geofencing data, and long-term telemetry storage.
 
-## 💎 Premium Features
-- **Executive Dashboards**: High-contrast, standardized UI for both Clients and Admin.
-- **Premium Mesh Layer**: Live vehicle tracking with satellite imagery as default.
-- **Detailed Playback**: Historical data with Stop status recognition (Ignition OFF) and speed analysis.
-- **Operations Center**: Comprehensive admin control over clients, hardware (IMEI), and protocols.
-- **Kinetic Override**: Remote engine cut/resume and speed limit configuration.
-- **Auto-Archiving**: Telemetry older than 90 days moved to Google Drive archives.
+## Authentication & Credentials
 
----
+**Administrator Access:**
+- Role: Platform Admin
+- Function: Fleet provisioning, global oversight, billing management.
+- Note: Use "Force Admin Login" from the main login screen to bypass email/password for testing.
 
-## 🏗️ Technical Architecture
+**Client Access:**
+- Role: Client (Asset Owner)
+- Function: Live tracking, history playback, localized geofence creation, receiving alerts.
+- Creation: Clients register via the `/register` endpoint (Start by clicking "Create an Account"). Registration requires a mock SMS OTP verification.
 
-```mermaid
-graph TD
-    subgraph "Edge Gateway"
-        TCP["TCP/UDP Server (Port 5000/5055/5023)"]
-    end
-    subgraph "Core Services"
-        API["Node.js Backend (Port 8080)"]
-        WS["Socket.io WebSocket"]
-        Vite["React Frontend (Nginx Served)"]
-    end
-    subgraph "Data Layer"
-        PG["PostgreSQL (PostGIS)"]
-        RD["Redis (Real-time Cache)"]
-    end
-    
-    TCP --> RD
-    API --> RD
-    API --> PG
-    WS --> API
-    Vite --> API
-```
+## Deployment Ports
 
----
+Ensure the following ports are open and services are actively running:
+- **Frontend (React/Vite):** `http://localhost:5173`
+- **Backend API (Node.js):** `http://localhost:8080` (or as configured in `.env`)
+- **Traccar Core Server:** `http://localhost:8082` (Backend telemetry ingestion)
+- **PostgreSQL Database:** `5432`
 
-## 🔐 Master Access
+## Operational Workflows
 
-| Component | Default Value | Notes |
-|-----------|---------------|-------|
-| Admin Portal | `admin@geosurepath.com` | Password: `admin@123` |
-| Client Portal | [User Defined] | Create via Registration |
-| API Base | `http://3.108.114.12` | Frontend API endpoint |
-| WS Base | `ws://3.108.114.12` | Frontend WebSocket endpoint |
-| TCP Server | `3.108.114.12:5000` | Device listens here |
-| GT06 Gateway (TCP) | PORT 5023 | High Precision Protocol |
+### 1. Client Registration & Onboarding
+1. Navigate to the main Login page and click **Create an Account**.
+2. Enter personal credentials and exact Indian Vehicle Registration Plates (e.g. MH 12 AB 1234).
+3. Connect a specific GPS tracking unit by its 15-digit Hardware UUID (IMEI).
+4. Initiate the Mobile Verification sequence (Use Mock OTP: `1234`).
+5. Account is created. Wait for Administrator to activate the subscription if blocked.
 
----
+### 2. Device Management & Billing (Admin)
+1. Log in via "Force Admin Login".
+2. Navigate to the **Accounts (Clients)** tab.
+3. Review connected IoT devices and their Live Ecosystem Status.
+4. **Extend Subscription:** Click the `+365 Days` button next to an account to rapidly add a year of subscription time to the client's profile.
+5. **Data Pruning:** The system will automatically safely archive data older than 180 days to Google Drive every night at 1 AM.
 
-## 🛠️ Production Environment Variables
+### 3. Live Tracking & Geofencing (Client)
+1. Log into your Client account.
+2. The Live Map auto-updates every 10 seconds via WebSocket tracking.
+3. Use the **Draw Shape** utility on the map to define custom geofences or route fences. Alerts trigger when connected IoT hardware breaches these borders.
 
-Edit `backend/.env` after deployment:
+### 4. History Playback (Client)
+1. Open the Map View and click on a targeted Vehicle.
+2. Define a strict search parameter using the Calendar Date Pickers (e.g. `2024-03-01 00:00` to `2024-03-01 23:59`).
+3. The platform will reconstruct the exact path via polyline routing and dynamically update Vehicle Map Markers to display **Ignition State (ON/OFF)**.
 
-```env
-POSTGRES_USER=gps_admin
-POSTGRES_PASSWORD=your_secure_password
-POSTGRES_DB=gps_saas
-DB_HOST=db
-REDIS_HOST=redis
-JWT_SECRET=your_jwt_secret
-NODE_ENV=production
-ADMIN_EMAIL=admin@geosurepath.com
-ADMIN_PASSWORD=admin@123
+### 5. Forgot Password Recovery
+1. Use the "Forgot Password?" prompt on the Login view.
+2. Enter registered email address to receive a secure Mock OTP (Default: `1234`).
+3. Supply a new secure password. The system updates the encrypted hash as well as the readable text cache matrix.
 
-# Integration
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your_email
-SMTP_PASS=your_app_password
-TWILIO_ACCOUNT_SID=AC...
-TWILIO_AUTH_TOKEN=...
-GOOGLE_BACKUP_FOLDER_ID=1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8
-```
+## Troubleshooting
+- **WebSocket Disconnection:** If live tracking is frozen, ensure Port 8080 allows socket upgrades.
+- **Hardware UUID Registration Errors:** UUIDs must be strictly 15 integers.
+- **Missing Telemetry in Playback:** Data older than 180 days is physically relocated to Google Drive, ensuring primary PostgreSQL clusters remain rapid for sub-6-month queries.
 
----
-
-## 🚀 Deployment Guide (AWS Lightsail)
-
-The system is optimized for **AWS Lightsail 2GB RAM** instances.
-
-### 1. Execute One-Click Installer
-```bash
-sudo bash install.sh
-```
-*This script automatically handles swap creation, docker installation, firewall configuration, and Nginx proxying.*
-
-### 2. Verify Services
-```bash
-docker-compose ps
-```
-
-### 3. Setup SSL (Recommended)
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d yourtrackingserver.com
-```
-
----
-
-## 📁 Repository Structure
-- `/frontend`: React + Premium UI Components
-- `/backend`: Node.js Core API & Worker Services
-- `/tcp-server`: Binary GPS Protocol Parsers
-- `/database`: Schema and Migrations
-- `install.sh`: Master Deployment Script
-
----
-
-## ☁️ Archiving & Retention
-Data older than 90 days is automatically archived to the following directory:
-[Historical Archives](https://drive.google.com/drive/folders/1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8)
+*GeoSurePath - Master the Grid.*

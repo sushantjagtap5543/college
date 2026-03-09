@@ -880,8 +880,60 @@ const LoginPage = ({ onLogin }) => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isForgotMode, setIsForgotMode] = useState(false);
+    const [otpStep, setOtpStep] = useState(false);
+    const [otpInput, setOtpInput] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [successMsg, setSuccessMsg] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+
+    const handleSendResetOtp = () => {
+        if (!email) {
+            setError('Please enter your registered email address first.');
+            return;
+        }
+        setError('');
+        setOtpStep(true);
+        // Mock OTP is 1234
+    };
+
+    const handleResetPassword = async (e) => {
+        e.preventDefault();
+        if (otpInput !== '1234') {
+            setError('Invalid OTP. Use 1234 for testing.');
+            return;
+        }
+        if (!newPassword) {
+            setError('Please enter a new password.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const req = await fetch(`${API_BASE}/api/auth/reset-password-otp`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, newPassword })
+            });
+            const data = await req.json();
+            if (data.status === 'SUCCESS') {
+                setSuccessMsg('Password Reset Successfully! You can now login.');
+                setTimeout(() => {
+                    setIsForgotMode(false);
+                    setOtpStep(false);
+                    setNewPassword('');
+                    setOtpInput('');
+                    setSuccessMsg('');
+                    setPassword('');
+                }, 3000);
+            } else {
+                setError(data.message || 'Failed to reset password.');
+            }
+        } catch (err) {
+            setError('System temporarily unavailable.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleLogin = async (e) => {
         if (e) e.preventDefault();
@@ -967,42 +1019,93 @@ const LoginPage = ({ onLogin }) => {
                                 <span className="text-xs font-black uppercase tracking-widest">{error}</span>
                             </div>
                         )}
+                        {successMsg && (
+                            <div className="mb-8 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-4 text-emerald-500 animate-in slide-in-from-top-2">
+                                <CheckCircle2 size={20} />
+                                <span className="text-xs font-black uppercase tracking-widest">{successMsg}</span>
+                            </div>
+                        )}
 
-                        <form onSubmit={handleLogin} className="space-y-8 relative z-10">
-                            <div className="space-y-5">
-                                <div className="group">
-                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Email Address</label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><UserCircle size={16} /></div>
-                                        <input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. admin@domain.com" className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                        {!isForgotMode ? (
+                            <form onSubmit={handleLogin} className="space-y-8 relative z-10">
+                                <div className="space-y-5">
+                                    <div className="group">
+                                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Email Address</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><UserCircle size={16} /></div>
+                                            <input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. admin@domain.com" className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                        </div>
+                                    </div>
+
+                                    <div className="group">
+                                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Password</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><Shield size={16} /></div>
+                                            <input required type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter Password" className="w-full pl-12 pr-12 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-[#10b981] transition-colors">
+                                                {showPassword ? <MapIcon size={16} /> : <Zap size={16} />}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div className="group">
-                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Password</label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><Shield size={16} /></div>
-                                        <input required type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter Password" className="w-full pl-12 pr-12 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
-                                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-[#10b981] transition-colors">
-                                            {showPassword ? <MapIcon size={16} /> : <Zap size={16} />}
-                                        </button>
-                                    </div>
+                                <button disabled={isLoading} type="submit" className="w-full bg-[#10b981] hover:bg-[#059669] text-black py-5 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] active:scale-95 flex items-center justify-center gap-3">
+                                    {isLoading ? <><RefreshCcw size={16} className="animate-spin" /> Logging in...</> : <>Login <ArrowRight size={16} /></>}
+                                </button>
+
+                                <div className="pt-6 border-t border-white/10 flex flex-col items-center gap-4">
+                                    <button type="button" onClick={() => { setIsForgotMode(true); setError(''); }} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-[#10b981] transition-colors">
+                                        Forgot Password?
+                                    </button>
+                                    <button type="button" onClick={() => navigate('/register')} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors">
+                                        Create an Account?
+                                    </button>
+                                    <button type="button" onClick={(e) => handleLogin(e, 'ADMIN')} className="px-6 py-2 bg-rose-500/10 text-rose-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all">
+                                        Force Admin Login
+                                    </button>
                                 </div>
-                            </div>
-
-                            <button disabled={isLoading} type="submit" className="w-full bg-[#10b981] hover:bg-[#059669] text-black py-5 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] active:scale-95 flex items-center justify-center gap-3">
-                                {isLoading ? <><RefreshCcw size={16} className="animate-spin" /> Logging in...</> : <>Login <ArrowRight size={16} /></>}
-                            </button>
-
-                            <div className="pt-6 border-t border-white/10 flex flex-col items-center gap-4">
-                                <button type="button" onClick={() => navigate('/register')} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors">
-                                    Create an Account?
+                            </form>
+                        ) : (
+                            <form onSubmit={otpStep ? handleResetPassword : (e) => { e.preventDefault(); handleSendResetOtp(); }} className="space-y-8 relative z-10">
+                                <div className="space-y-5">
+                                    <div className="group">
+                                        <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Registered Email</label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500"><UserCircle size={16} /></div>
+                                            <input required disabled={otpStep} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter email to reset" className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                        </div>
+                                    </div>
+                                    {otpStep && (
+                                        <>
+                                            <div className="group animate-in slide-in-from-top-2">
+                                                <label className="block text-[9px] font-black text-[#10b981] uppercase tracking-[0.2em] mb-2 pl-1">Secure OTP (Check Mock Email)</label>
+                                                <input required type="text" maxLength="4" value={otpInput} onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))} placeholder="Enter 4-digit OTP code" className="w-full text-center tracking-[0.8em] py-4 border-2 border-[#10b981]/50 rounded-xl font-mono font-black text-2xl outline-none focus:border-[#10b981] focus:ring-4 focus:ring-[#10b981]/20 transition-all text-white bg-black/50" />
+                                                <div className="text-[10px] text-slate-500 mt-2 text-center uppercase tracking-widest font-black">Mock Code: 1234</div>
+                                            </div>
+                                            <div className="group animate-in slide-in-from-top-2">
+                                                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">New Password</label>
+                                                <div className="relative">
+                                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500"><Shield size={16} /></div>
+                                                    <input required type={showPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Type new password" className="w-full pl-12 pr-12 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-[#10b981] transition-colors">
+                                                        {showPassword ? <MapIcon size={16} /> : <Zap size={16} />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                <button disabled={isLoading} type="submit" className="w-full bg-[#10b981] hover:bg-[#059669] text-black py-5 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] active:scale-95 flex items-center justify-center gap-3">
+                                    {isLoading ? <RefreshCcw size={16} className="animate-spin" /> : <Shield size={16} />}
+                                    {otpStep ? 'Reset Password & Validate' : 'Send Reset OTP Code'}
                                 </button>
-                                <button type="button" onClick={(e) => handleLogin(e, 'ADMIN')} className="px-6 py-2 bg-rose-500/10 text-rose-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all">
-                                    Force Admin Login
-                                </button>
-                            </div>
-                        </form>
+                                <div className="pt-6 border-t border-white/10 flex flex-col items-center gap-4">
+                                    <button type="button" onClick={() => { setIsForgotMode(false); setOtpStep(false); setError(''); }} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors">
+                                        Back to Login Sequence
+                                    </button>
+                                </div>
+                            </form>
+                        )}
                     </div>
                 </motion.div>
             </div>
@@ -1736,6 +1839,21 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                                     icon={getVehicleIcon({ ...selectedVehicle, status: 'moving', heading: historyData[historyIndex].heading, speed: historyData[historyIndex].speed })}
                                 />
                             )}
+                            {historyData.map((p, idx) => {
+                                if (idx > 0 && p.ignition !== historyData[idx - 1].ignition && p.ignition !== null) {
+                                    return (
+                                        <Marker
+                                            key={`ign-${idx}`}
+                                            position={[Number(p.lat), Number(p.lng)]}
+                                            icon={new L.DivIcon({
+                                                className: 'bg-transparent',
+                                                html: `<div class="w-5 h-5 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-[8px] font-black text-white ${p.ignition ? 'bg-emerald-500' : 'bg-red-500'}">${p.ignition ? 'ON' : 'OFF'}</div>`
+                                            })}
+                                        />
+                                    )
+                                }
+                                return null;
+                            })}
                         </>
                     )}
                 </MapContainer>

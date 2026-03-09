@@ -159,6 +159,17 @@ export default function Layout({ children, user, onLogout }) {
                     </div>
 
                     <div className="flex items-center gap-6">
+                        {user?.role === 'CLIENT' && user?.subscription_end_date && (
+                            <div className="flex items-center bg-white/10 px-3 py-1.5 rounded-xl text-xs font-bold font-mono tracking-widest border border-white/20">
+                                {(() => {
+                                    const diffDays = Math.ceil((new Date(user.subscription_end_date) - new Date()) / (1000 * 60 * 60 * 24));
+                                    if (diffDays <= 7) {
+                                        return <span className="text-rose-300 flex items-center gap-2"><AlertTriangle size={14} /> {diffDays} DAYS LEFT (RENEW SOON)</span>;
+                                    }
+                                    return <span className="text-emerald-300">Expires: {diffDays} Days</span>;
+                                })()}
+                            </div>
+                        )}
                         <div className="flex items-center gap-2 text-sm font-medium">
                             <span className="opacity-80">Welcome,</span>
                             <span>{user?.name || 'User'}</span>

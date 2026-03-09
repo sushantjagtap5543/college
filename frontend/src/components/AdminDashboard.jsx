@@ -537,6 +537,7 @@ export default function AdminDashboard({
                                             </td>
                                             <td className="py-8 px-5 text-right">
                                                 <div className="flex justify-end gap-3">
+                                                    <button onClick={() => handleRenew(c.id)} className="px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm">+365 Days</button>
                                                     <button onClick={() => handleToggleBlock(c.id, c.is_blocked)} className={`px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest transition-all ${c.is_blocked ? 'bg-emerald-500 text-black hover:scale-110' : 'bg-white border-2 border-rose-100 text-rose-500 hover:bg-rose-500 hover:text-white shadow-sm'}`}>
                                                         {c.is_blocked ? 'Restore' : 'Suspend'}
                                                     </button>
