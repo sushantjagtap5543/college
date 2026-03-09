@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- White coach body -->
+  <rect x="8" y="2" width="24" height="36" rx="3" fill="#f8fafc"/>
+  <!-- Grey roof/underbody band -->
+  <rect x="8" y="2" width="24" height="4" rx="3" fill="#64748b"/>
+  <rect x="8" y="34" width="24" height="4" rx="3" fill="#64748b"/>
+  <!-- Blue stripe livery -->
+  <rect x="8" y="17" width="24" height="3" fill="#2563eb"/>
+  <!-- Windshield -->
+  <rect x="10" y="7" width="20" height="8" rx="2" fill="rgba(147,210,255,0.8)"/>
+  <!-- Passenger windows -->
+  <rect x="10" y="13" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="17.25" y="13" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="24.5" y="13" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="10" y="21" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="17.25" y="21" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="24.5" y="21" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="10" y="27" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="17.25" y="27" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <rect x="24.5" y="27" width="5.5" height="3.5" rx="1" fill="rgba(147,210,255,0.65)"/>
+  <!-- Headlights -->
+  <rect x="8" y="3.5" width="5.5" height="2" rx="1" fill="#fef08a"/>
+  <rect x="26.5" y="3.5" width="5.5" height="2" rx="1" fill="#fef08a"/>
+  <!-- Taillights -->
+  <rect x="8" y="34.5" width="5.5" height="2" rx="1" fill="#f87171"/>
+  <rect x="26.5" y="34.5" width="5.5" height="2" rx="1" fill="#f87171"/>
+  <!-- Wheels -->
+  <rect x="5" y="5" width="3.5" height="8" rx="1.5" fill="#1e293b"/>
+  <rect x="31.5" y="5" width="3.5" height="8" rx="1.5" fill="#1e293b"/>
+  <rect x="5" y="27" width="3.5" height="8" rx="1.5" fill="#1e293b"/>
+  <rect x="31.5" y="27" width="3.5" height="8" rx="1.5" fill="#1e293b"/>
+</svg>

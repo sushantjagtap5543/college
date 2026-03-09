@@ -1,160 +1,217 @@
 import L from 'leaflet';
 
-// --- VEHICLE ICON OPTIONS ---
+/**
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  VEHICLE ICON SYSTEM — File-based SVGs with heading rotation    ║
+ * ║                                                                  ║
+ * ║  SVG files live in:  /public/vehicle-icons/<type>.svg           ║
+ * ║  Every SVG must face UPWARD (north) by default.                 ║
+ * ║  The icon engine rotates the image by GPS heading/course.       ║
+ * ║                                                                  ║
+ * ║  To change an icon: replace the SVG file in the folder.         ║
+ * ║  All 22 vehicle types have their own dedicated SVG file.        ║
+ * ╚══════════════════════════════════════════════════════════════════╝
+ */
+
+/** Alias map — empty since all 22 types have their own SVG file.
+ * Add entries here only if you want two types to share one file. */
+const ICON_FILE_ALIAS = {};
+
+/** Resolve iconType → SVG filename (without extension) */
+export const resolveIconFile = (iconType) =>
+  ICON_FILE_ALIAS[iconType] || iconType || 'car';
+
+// --- VEHICLE ICON OPTIONS (shown in the icon picker) ---
 export const VEHICLE_ICON_OPTIONS = [
-    { id: 'car', label: 'Car', emoji: '🚗' },
-    { id: 'suv', label: 'SUV', emoji: '🚙' },
-    { id: 'pickup', label: 'Pickup', emoji: '🛻' },
-    { id: 'truck', label: 'Truck', emoji: '🚛' },
-    { id: 'van', label: 'Van', emoji: '🚐' },
-    { id: 'bus', label: 'Bus', emoji: '🚌' },
-    { id: 'motorcycle', label: 'Motorcycle', emoji: '🏍️' },
-    { id: 'scooter', label: 'Scooter', emoji: '🛵' },
-    { id: 'bike', label: 'Bike', emoji: '🚲' },
-    { id: 'auto', label: 'Auto', emoji: '🛺' },
-    { id: 'tractor', label: 'Tractor', emoji: '🚜' },
-    { id: 'crane', label: 'Crane', emoji: '🏗️' },
-    { id: 'tanker', label: 'Tanker', emoji: '⛽' },
-    { id: 'jcb', label: 'JCB', emoji: '🚧' },
-    { id: 'ambulance', label: 'Ambulance', emoji: '🚑' },
-    { id: 'police', label: 'Police', emoji: '🚓' },
+  { id: 'car', label: 'Sedan', emoji: '🚗' },
+  { id: 'suv', label: 'SUV', emoji: '🚙' },
+  { id: 'pickup', label: 'Pickup', emoji: '🛻' },
+  { id: 'van', label: 'Van', emoji: '🚐' },
+  { id: 'taxi', label: 'Taxi', emoji: '🚕' },
+  { id: 'racecar', label: 'Sports', emoji: '🏎️' },
+  { id: 'truck', label: 'Truck', emoji: '🚛' },
+  { id: 'box_truck', label: 'Box Truck', emoji: '🚚' },
+  { id: 'bus', label: 'Bus', emoji: '🚌' },
+  { id: 'coach', label: 'Coach', emoji: '🚍' },
+  { id: 'motorcycle', label: 'Moto', emoji: '🏍️' },
+  { id: 'scooter', label: 'Scooter', emoji: '🛵' },
+  { id: 'bike', label: 'Bicycle', emoji: '🚲' },
+  { id: 'auto', label: 'Auto', emoji: '🛺' },
+  { id: 'ambulance', label: 'Ambulance', emoji: '🚑' },
+  { id: 'police', label: 'Police', emoji: '🚓' },
+  { id: 'fire', label: 'Fire', emoji: '🚒' },
+  { id: 'tractor', label: 'Tractor', emoji: '🚜' },
+  { id: 'tanker', label: 'Tanker', emoji: '⛽' },
+  { id: 'jcb', label: 'JCB', emoji: '🚧' },
+  { id: 'boat', label: 'Boat', emoji: '🚤' },
+  { id: 'ship', label: 'Ship', emoji: '🚢' },
 ];
 
 // --- PIN COLOR OPTIONS ---
 export const PIN_COLOR_OPTIONS = [
-    { id: '#10b981', label: 'Green' },
-    { id: '#3b82f6', label: 'Blue' },
-    { id: '#f59e0b', label: 'Amber' },
-    { id: '#8b5cf6', label: 'Purple' },
-    { id: '#ef4444', label: 'Red' },
-    { id: '#06b6d4', label: 'Cyan' },
-    { id: '#ec4899', label: 'Pink' },
-    { id: '#f97316', label: 'Orange' },
-    { id: '#14b8a6', label: 'Teal' },
-    { id: '#6366f1', label: 'Indigo' },
-    { id: '#84cc16', label: 'Lime' },
-    { id: '#334155', label: 'Slate' },
+  { id: '#10b981', label: 'Green' },
+  { id: '#3b82f6', label: 'Blue' },
+  { id: '#f59e0b', label: 'Amber' },
+  { id: '#8b5cf6', label: 'Purple' },
+  { id: '#ef4444', label: 'Red' },
+  { id: '#06b6d4', label: 'Cyan' },
+  { id: '#ec4899', label: 'Pink' },
+  { id: '#f97316', label: 'Orange' },
+  { id: '#14b8a6', label: 'Teal' },
+  { id: '#6366f1', label: 'Indigo' },
+  { id: '#84cc16', label: 'Lime' },
+  { id: '#334155', label: 'Slate' },
 ];
 
-// Helper to get icon preference
+// ─── localStorage helpers ─────────────────────────────────────────────────────
 export const getVehicleIconPref = (imei) => {
-    try { return JSON.parse(localStorage.getItem('vehicleIcons') || '{}')[imei] || 'car'; } catch { return 'car'; }
+  try { return JSON.parse(localStorage.getItem('vehicleIcons') || '{}')[imei] || 'car'; } catch { return 'car'; }
 };
 export const getVehicleColorPref = (imei) => {
-    try { return JSON.parse(localStorage.getItem('vehicleColors') || '{}')[imei] || null; } catch { return null; }
+  try { return JSON.parse(localStorage.getItem('vehicleColors') || '{}')[imei] || null; } catch { return null; }
 };
-
-// Helpers to set icon/color preferences
 export const setVehicleIconPref = (imei, iconId) => {
-    try {
-        const existing = JSON.parse(localStorage.getItem('vehicleIcons') || '{}');
-        existing[imei] = iconId;
-        localStorage.setItem('vehicleIcons', JSON.stringify(existing));
-    } catch { }
+  try {
+    const obj = JSON.parse(localStorage.getItem('vehicleIcons') || '{}');
+    obj[imei] = iconId;
+    localStorage.setItem('vehicleIcons', JSON.stringify(obj));
+  } catch { }
 };
 export const setVehicleColorPref = (imei, color) => {
-    try {
-        const existing = JSON.parse(localStorage.getItem('vehicleColors') || '{}');
-        existing[imei] = color;
-        localStorage.setItem('vehicleColors', JSON.stringify(existing));
-    } catch { }
+  try {
+    const obj = JSON.parse(localStorage.getItem('vehicleColors') || '{}');
+    obj[imei] = color;
+    localStorage.setItem('vehicleColors', JSON.stringify(obj));
+  } catch { }
 };
 
-// Generate inner SVG shape for each icon type
-export const getIconShapeSvg = (type) => {
-    switch (type) {
-        case 'car':
-        case 'suv':
-            return opacity => `<rect x="12" y="8" width="16" height="30" rx="6" fill="white" opacity="${opacity || 0.95}"/>
-                   <rect x="14" y="14" width="12" height="8" rx="2" fill="rgba(0,0,0,0.15)"/>
-                   <rect x="14" y="26" width="12" height="6" rx="1.5" fill="rgba(0,0,0,0.1)"/>
-                   <rect x="11" y="12" width="1.5" height="5" rx="0.5" fill="white"/>
-                   <rect x="27.5" y="12" width="1.5" height="5" rx="0.5" fill="white"/>`;
-        case 'truck':
-            return opacity => `<rect x="11" y="6" width="18" height="34" rx="2" fill="white" opacity="${opacity || 0.95}"/>
-                   <rect x="11" y="6" width="18" height="12" rx="2" fill="white" opacity="0.8"/>
-                   <rect x="13" y="8" width="14" height="6" rx="1" fill="rgba(0,0,0,0.15)"/>
-                   <rect x="10" y="30" width="2" height="6" rx="1" fill="rgba(0,0,0,0.3)"/>
-                   <rect x="28" y="30" width="2" height="6" rx="1" fill="rgba(0,0,0,0.3)"/>`;
-        case 'van':
-            return opacity => `<rect x="12" y="7" width="16" height="32" rx="3" fill="white" opacity="${opacity || 0.95}"/>
-                   <rect x="14" y="10" width="12" height="6" rx="1.5" fill="rgba(0,0,0,0.15)"/>
-                   <rect x="14" y="28" width="12" height="4" rx="1" fill="rgba(0,0,0,0.1)"/>`;
-        case 'bus':
-            return opacity => `<rect x="11" y="5" width="18" height="36" rx="3" fill="white" opacity="${opacity || 0.95}"/>
-                   <rect x="13" y="8" width="14" height="4" rx="1" fill="rgba(0,0,0,0.15)"/>
-                   <rect x="13" y="14" width="14" height="2" rx="0.5" fill="rgba(0,0,0,0.08)"/>
-                   <rect x="13" y="18" width="14" height="2" rx="0.5" fill="rgba(0,0,0,0.08)"/>
-                   <rect x="13" y="22" width="14" height="2" rx="0.5" fill="rgba(0,0,0,0.08)"/>
-                   <rect x="13" y="26" width="14" height="2" rx="0.5" fill="rgba(0,0,0,0.08)"/>`;
-        case 'motorcycle':
-        case 'scooter':
-        case 'bike':
-            return opacity => `<rect x="18" y="8" width="4" height="24" rx="2" fill="white" opacity="${opacity || 0.95}"/>
-                    <rect x="14" y="14" width="12" height="2.5" rx="1" fill="white"/>
-                    <circle cx="20" cy="12" r="2" fill="rgba(0,0,0,0.2)"/>`;
-        case 'auto':
-            return opacity => `<path d="M14 30 L20 8 L26 30 Z" fill="white" opacity="${opacity || 0.95}"/>
-                    <rect x="18" y="14" width="4" height="12" rx="1" fill="rgba(0,0,0,0.1)"/>`;
-        default:
-            return opacity => `<rect x="12" y="8" width="16" height="30" rx="6" fill="white" opacity="${opacity || 0.95}"/>
-                   <rect x="14" y="14" width="12" height="8" rx="2" fill="rgba(0,0,0,0.15)"/>`;
-    }
-};
-
-// --- CORE VEHICLE ICON GENERATOR ---
+// ─── MAIN ICON GENERATOR ──────────────────────────────────────────────────────
+/**
+ * getVehicleIcon(vehicle, colorOverride?)
+ *
+ * Renders an `<img>` pointing to /vehicle-icons/<type>.svg inside a
+ * positioned `<div>`.  The img is rotated by the GPS heading so the
+ * vehicle "faces" the direction it's travelling.  A coloured circle
+ * backdrop (user's chosen colour) sits behind the image.
+ *
+ * Vehicle fields used:
+ *   .status      — 'moving' | 'idle' | 'stopped' | 'alert' | 'offline'
+ *   .ignition    — boolean
+ *   .color       — hex body/badge color
+ *   .iconType    — key from VEHICLE_ICON_OPTIONS
+ *   .heading     — 0–359° (0 = north, 90 = east …)
+ *   .course      — fallback if .heading is absent (Traccar field)
+ *   .isAlerting  — boolean
+ *   .imei / .id  — used for localStorage look-ups
+ */
 export const getVehicleIcon = (vehicle, colorOverride = null) => {
-    const status = vehicle.status || 'offline';
-    const pinColor = colorOverride || vehicle.color || getVehicleColorPref(vehicle.imei) || '#10b981';
-    const statusColor = status === 'moving' ? '#10b981'
-        : status === 'idle' ? '#f59e0b'
-            : (status === 'alert' || vehicle.isAlerting) ? '#ef4444'
-                : status === 'stopped' ? '#3b82f6'
-                    : '#94a3b8';
+  const imei = vehicle.imei || vehicle.id || '';
+  const status = vehicle.status || 'offline';
+  const badgeColor = colorOverride || vehicle.color || getVehicleColorPref(imei) || '#3b82f6';
 
-    const ignition = vehicle.ignition !== false;
-    const isMoving = status === 'moving';
-    const isAlerting = status === 'alert' || vehicle.isAlerting;
-    const iconType = vehicle.iconType || vehicle.type || getVehicleIconPref(vehicle.imei) || 'car';
-    const shapeFunc = getIconShapeSvg(iconType);
-    const carSvg = typeof shapeFunc === 'function' ? shapeFunc(0.95) : shapeFunc;
+  // Heading: GPS degrees 0–359 (0 = north = up)
+  const heading = Number(vehicle.heading ?? vehicle.course ?? 0);
 
-    // Dynamic pulse animation for alerts or movement
-    const pulseRing = (isMoving || isAlerting) ? `
-        <circle cx="20" cy="18" r="22" fill="none" stroke="${statusColor}" stroke-width="2" opacity="0.35">
-            <animate attributeName="r" values="${isAlerting ? '20;35;20' : '20;30;20'}" dur="${isAlerting ? '0.8s' : '2s'}" repeatCount="indefinite"/>
-            <animate attributeName="opacity" values="0.6;0;0.6" dur="${isAlerting ? '0.8s' : '2s'}" repeatCount="indefinite"/>
-        </circle>` : '';
+  const statusColor = status === 'moving' ? '#10b981'
+    : status === 'idle' ? '#f59e0b'
+      : (status === 'alert' || vehicle.isAlerting) ? '#ef4444'
+        : status === 'stopped' ? '#3b82f6'
+          : '#94a3b8';
 
-    const alertBlink = isAlerting ? `
-        <circle cx="20" cy="18" r="25" fill="${statusColor}" opacity="0.2">
-            <animate attributeName="opacity" values="0.4;0;0.4" dur="0.5s" repeatCount="indefinite"/>
-        </circle>` : '';
+  const ignition = vehicle.ignition !== false;
+  const isMoving = status === 'moving';
+  const isAlerting = status === 'alert' || vehicle.isAlerting;
+  const iconType = vehicle.iconType || vehicle.type || getVehicleIconPref(imei) || 'car';
+  const svgFile = resolveIconFile(iconType);
+  const svgUrl = `/vehicle-icons/${svgFile}.svg`;
 
-    const svgString = `<svg width="40" height="50" viewBox="0 0 40 50" xmlns="http://www.w3.org/2000/svg">
+  // Pulse ring border (keyframe via inline animation hack using SVG)
+  const pulseStyle = (isMoving || isAlerting)
+    ? `box-shadow:0 0 0 3px ${statusColor}66, 0 0 0 7px ${statusColor}22;`
+    : '';
+
+  const alertBlink = isAlerting
+    ? `animation:tz-alert-blink 0.5s infinite;`
+    : '';
+
+  // Direction arrow — tiny chevron at top of the rotating group
+  // Rendered as a small triangle inside the SVG wrapper via border trick
+  const arrowHtml = isMoving
+    ? `<div style="
+            position:absolute;top:-5px;left:50%;
+            transform:translateX(-50%);
+            width:0;height:0;
+            border-left:5px solid transparent;
+            border-right:5px solid transparent;
+            border-bottom:7px solid ${statusColor};
+            z-index:2;
+          "></div>`
+    : '';
+
+  const html = `
+    <style>
+      @keyframes tz-alert-blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+      @keyframes tz-pulse { 0%{box-shadow:0 0 0 0px ${statusColor}55} 100%{box-shadow:0 0 0 10px ${statusColor}00} }
+    </style>
+    <div style="
+      position:relative;
+      width:44px;height:44px;
+      display:flex;align-items:center;justify-content:center;
+    ">
+      <!-- Coloured backdrop circle (user's chosen colour) -->
+      <div style="
+        position:absolute;inset:3px;
+        border-radius:50%;
+        background:${badgeColor};
+        opacity:0.88;
+        ${pulseStyle}
+        ${isMoving ? 'animation:tz-pulse 1.5s infinite;' : ''}
         ${alertBlink}
-        ${pulseRing}
-        <defs>
-          <filter id="ps_g">
-            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="rgba(0,0,0,0.45)"/>
-          </filter>
-        </defs>
-        <path d="M20 3 C11 3,4 10,4 19 C4 28,20 45,20 45 C20 45,36 28,36 19 C36 10,29 3,20 3 Z" fill="${isAlerting ? '#ef4444' : pinColor}" filter="url(#ps_g)">
-            ${isAlerting ? '<animate attributeName="fill" values="#ef4444;#991b1b;#ef4444" dur="0.5s" repeatCount="indefinite"/>' : ''}
-        </path>
-        <circle cx="20" cy="18" r="12" fill="rgba(0,0,0,0.18)"/>
-        ${carSvg}
-        <circle cx="20" cy="18" r="12" fill="none" stroke="${statusColor}" stroke-width="1.5" opacity="0.7"/>
-        <circle cx="32" cy="8" r="5" fill="${ignition ? '#22c55e' : '#94a3b8'}" stroke="white" stroke-width="1.5"/>
-        <circle cx="8" cy="8" r="4" fill="${statusColor}">
-            <animate attributeName="opacity" values="1;0.2;1" dur="${isAlerting ? '0.4s' : '0.8s'}" repeatCount="indefinite"/>
-        </circle>
-    </svg>`;
+      "></div>
 
-    return L.divIcon({
-        className: 'custom-vehicle-marker',
-        html: svgString,
-        iconSize: [40, 50],
-        iconAnchor: [20, 45]
-    });
+      <!-- Vehicle SVG image — rotates with GPS heading -->
+      <div style="
+        position:absolute;inset:0;
+        display:flex;align-items:center;justify-content:center;
+        transform:rotate(${heading}deg);
+        transform-origin:center center;
+      ">
+        ${arrowHtml}
+        <img
+          src="${svgUrl}"
+          width="38" height="38"
+          style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.5));display:block;"
+          onerror="this.src='/vehicle-icons/car.svg'"
+        />
+      </div>
+
+      <!-- Status dot (bottom-right) — FIXED, does NOT rotate -->
+      <div style="
+        position:absolute;bottom:1px;right:0px;
+        width:11px;height:11px;
+        border-radius:50%;
+        background:${statusColor};
+        border:2px solid white;
+        box-shadow:0 1px 3px rgba(0,0,0,0.3);
+        ${isAlerting ? 'animation:tz-alert-blink 0.4s infinite;' : ''}
+      "></div>
+
+      <!-- Ignition dot (top-right) — FIXED, does NOT rotate -->
+      <div style="
+        position:absolute;top:1px;right:0px;
+        width:10px;height:10px;
+        border-radius:50%;
+        background:${ignition ? '#22c55e' : '#94a3b8'};
+        border:2px solid white;
+        box-shadow:0 1px 2px rgba(0,0,0,0.25);
+      "></div>
+    </div>`;
+
+  return L.divIcon({
+    className: '',          // blank — no leaflet default styles
+    html,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],   // center of marker = GPS coordinate point
+    popupAnchor: [0, -22],
+  });
 };

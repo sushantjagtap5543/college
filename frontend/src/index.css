@@ -31,7 +31,9 @@
   --color-brand-900: #7c2d12;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   min-height: 100vh;
   margin: 0;
   padding: 0;
@@ -51,22 +53,62 @@ body {
 }
 
 /* Base text color overrides for form inputs */
-input, textarea, select {
+input,
+textarea,
+select {
   color: #0f172a !important;
   background-color: #ffffff !important;
 }
 
-.dark input, .dark textarea, .dark select {
-  color: #0f172a !important;
-  background-color: #ffffff !important;
+.dark input,
+.dark textarea,
+.dark select {
+  color: #f8fafc !important;
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
 }
 
-/* Force dark text on inputs with white background in dark mode */
-.dark input[class*="bg-white"], 
-.dark select[class*="bg-white"],
-.dark input.bg-white, 
-.dark select.bg-white {
-  color: #0f172a !important;
+/* Premium Dark Mode Global Overrides */
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-100 {
+  background-color: #0f172a !important;
+}
+
+.dark .border-slate-50,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: #334155 !important;
+}
+
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: #f8fafc !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+/* Fix structural dividers natively */
+.dark .divide-slate-50> :not([hidden])~ :not([hidden]),
+.dark .divide-slate-100> :not([hidden])~ :not([hidden]),
+.dark .divide-slate-200> :not([hidden])~ :not([hidden]) {
+  border-color: #334155 !important;
+}
+
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover {
+  background-color: #334155 !important;
 }
 
 /* Ensure placeholder text is always visible */
@@ -95,9 +137,9 @@ select option {
 }
 
 .dark .glass-panel {
-  background-color: rgba(30, 41, 59, 0.75);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  background-color: rgba(30, 41, 59, 0.75) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
 }
 
 /* High-end Buttons */
@@ -150,9 +192,9 @@ select option {
 }
 
 .dark .btn-secondary {
-  background-color: #1e293b;
-  color: #e2e8f0;
-  border: 1px solid rgba(51, 65, 85, 0.5);
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(51, 65, 85, 0.5) !important;
 }
 
 .dark .btn-secondary:hover {

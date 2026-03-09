@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Green hood (engine, front) -->
+  <rect x="15" y="2" width="10" height="10" rx="2" fill="#15803d"/>
+  <!-- Green cabin -->
+  <rect x="13" y="10" width="14" height="14" rx="3" fill="#16a34a"/>
+  <!-- Windshield -->
+  <rect x="14.5" y="11" width="11" height="7" rx="1.5" fill="rgba(147,210,255,0.75)"/>
+  <!-- Yellow/black ROPS (roll bar) detail -->
+  <rect x="15" y="12" width="10" height="1.5" rx="0.5" fill="#eab308"/>
+  <!-- Rear hitch/platform in amber -->
+  <rect x="11" y="23" width="18" height="10" rx="2" fill="#a16207"/>
+  <!-- Hitch connector -->
+  <rect x="18" y="32" width="4" height="5" rx="1" fill="#78350f"/>
+  <!-- Headlights (small, front) -->
+  <rect x="15.5" y="3" width="3.5" height="2" rx="1" fill="#fef08a"/>
+  <rect x="21" y="3" width="3.5" height="2" rx="1" fill="#fef08a"/>
+  <!-- Large rear wheels (tractor-style) -->
+  <ellipse cx="9.5" cy="28" rx="5" ry="6.5" fill="#1e293b"/>
+  <ellipse cx="30.5" cy="28" rx="5" ry="6.5" fill="#1e293b"/>
+  <!-- Rear wheel treads -->
+  <rect x="5.5" y="23" width="2" height="3" rx="0.5" fill="#374151"/>
+  <rect x="5.5" y="27" width="2" height="3" rx="0.5" fill="#374151"/>
+  <rect x="5.5" y="31" width="2" height="3" rx="0.5" fill="#374151"/>
+  <rect x="26.5" y="23" width="2" height="3" rx="0.5" fill="#374151"/>
+  <rect x="26.5" y="27" width="2" height="3" rx="0.5" fill="#374151"/>
+  <rect x="26.5" y="31" width="2" height="3" rx="0.5" fill="#374151"/>
+  <!-- Small front wheels -->
+  <ellipse cx="13" cy="6" rx="3" ry="4" fill="#374151"/>
+  <ellipse cx="27" cy="6" rx="3" ry="4" fill="#374151"/>
+</svg>

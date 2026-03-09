@@ -43,19 +43,28 @@ export default function CommandCenter({ fleet = [] }) {
 
     const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         ? 'http://localhost:8080'
-        : `${window.location.protocol}//${window.location.hostname}:8080`;
+        : `${window.location.protocol}//${window.location.hostname}`;
 
     const handleSend = async () => {
         if (!selectedDevice) return;
-        if (commandType === 'engine_stop' && userCodeInput !== securityCode) {
-            setStatus({ type: 'error', message: 'Security code mismatch. Please check and try again.' });
-            return;
+
+        const device = fleet.find(v => v.id === selectedDevice);
+
+        if (commandType === 'engine_stop') {
+            if (userCodeInput !== securityCode) {
+                setStatus({ type: 'error', message: 'Security code mismatch. Please check and try again.' });
+                return;
+            }
+            if (device && device.speed > 20) {
+                setStatus({ type: 'error', message: `Cannot immobilize: Vehicle speed is ${device.speed} km/h (above safe threshold of 20 km/h).` });
+                return;
+            }
         }
+
         setSending(true);
         setStatus(null);
 
         try {
-            const device = fleet.find(v => v.id === selectedDevice);
             const cmd = commands.find(c => c.id === commandType);
 
             let backendCommand = commandType;

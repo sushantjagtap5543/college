@@ -1,104 +1,119 @@
-# GEOSUREPATH - GPS Tracking & Fleet Management Platform
+# GeoSurePath — Premium GPS Vehicle Tracking SaaS
 
-A professional, fully-featured, high-performance SaaS platform for real-time GPS tracking and comprehensive fleet management. Built to handle enterprise-level telemetry with extensive modules including live tracking, historical playback, geofencing, remote immobilization, and automated billing.
+![GeoSurePath Logo](/logo.png)
 
-## 🚀 Quick Start & Deployment
+A high-performance, executive-grade GPS vehicle tracking platform featuring a unified design system, real-time telemetry, and advanced fleet control.
 
-### Dependencies
-Ensure you have the following installed on your server or local machine:
-- **Node.js**: v18+ 
-- **PostgreSQL**: v13+ (Required for relational data)
-- **Redis**: v6+ (Required for high-speed pub/sub and command queues)
+---
 
-### 1. Database Setup
-1. Create a PostgreSQL database named `gps_live_tracking`.
-2. Run the provided schema file to initialize the tables:
-   ```bash
-   psql -U postgres -d gps_live_tracking -f database/schema.sql
-   ```
+## 💎 Premium Features
+- **Executive Dashboards**: High-contrast, standardized UI for both Clients and Admin.
+- **Premium Mesh Layer**: Live vehicle tracking with satellite imagery as default.
+- **Detailed Playback**: Historical data with Stop status recognition (Ignition OFF) and speed analysis.
+- **Operations Center**: Comprehensive admin control over clients, hardware (IMEI), and protocols.
+- **Kinetic Override**: Remote engine cut/resume and speed limit configuration.
+- **Auto-Archiving**: Telemetry older than 90 days moved to Google Drive archives.
 
-### 2. Environment Variables (.env)
-Create a `.env` file in the `backend/` directory with the following variables:
+---
+
+## 🏗️ Technical Architecture
+
+```mermaid
+graph TD
+    subgraph "Edge Gateway"
+        TCP["TCP/UDP Server (Port 5000/5055/5023)"]
+    end
+    subgraph "Core Services"
+        API["Node.js Backend (Port 8080)"]
+        WS["Socket.io WebSocket"]
+        Vite["React Frontend (Nginx Served)"]
+    end
+    subgraph "Data Layer"
+        PG["PostgreSQL (PostGIS)"]
+        RD["Redis (Real-time Cache)"]
+    end
+    
+    TCP --> RD
+    API --> RD
+    API --> PG
+    WS --> API
+    Vite --> API
+```
+
+---
+
+## 🔐 Master Access
+
+| Component | Default Value | Notes |
+|-----------|---------------|-------|
+| Admin Portal | `admin@geosurepath.com` | Password: `admin@123` |
+| Client Portal | [User Defined] | Create via Registration |
+| API Base | `http://3.108.114.12` | Frontend API endpoint |
+| WS Base | `ws://3.108.114.12` | Frontend WebSocket endpoint |
+| TCP Server | `3.108.114.12:5000` | Device listens here |
+| GT06 Gateway (TCP) | PORT 5023 | High Precision Protocol |
+
+---
+
+## 🛠️ Production Environment Variables
+
+Edit `backend/.env` after deployment:
+
 ```env
-PORT=8080
-DB_USER=postgres
-DB_HOST=localhost
-DB_NAME=gps_live_tracking
-DB_PASSWORD=your_secure_password
-DB_PORT=5432
-REDIS_HOST=localhost
-REDIS_PORT=6379
-JWT_SECRET=your_super_secret_jwt_key
-```
+POSTGRES_USER=gps_admin
+POSTGRES_PASSWORD=your_secure_password
+POSTGRES_DB=gps_saas
+DB_HOST=db
+REDIS_HOST=redis
+JWT_SECRET=your_jwt_secret
+NODE_ENV=production
+ADMIN_EMAIL=admin@geosurepath.com
+ADMIN_PASSWORD=admin@123
 
-Create a `.env` file in the `tcp-server/` directory:
-```env
-TCP_PORT=5023
-DB_USER=postgres
-DB_HOST=localhost
-DB_NAME=gps_live_tracking
-DB_PASSWORD=your_secure_password
-DB_PORT=5432
-REDIS_HOST=localhost
-REDIS_PORT=6379
+# Integration
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email
+SMTP_PASS=your_app_password
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+GOOGLE_BACKUP_FOLDER_ID=1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8
 ```
-
-### 3. Starting the Services
-
-**A. Start the TCP Server (GPS Hardware Ingestion)**
-```bash
-cd tcp-server
-npm install
-npm run start
-```
-*Listens on port 5023 for incoming device connections.*
-
-**B. Start the Backend API & WebSockets**
-```bash
-cd backend
-npm install
-npm run start
-```
-*Listens on port 8080.*
-
-**C. Start the Frontend Application**
-```bash
-cd frontend
-npm install --legacy-peer-deps
-npm run dev
-```
-*Listens on port 5173 (Vite default).*
 
 ---
 
-## 🏗 System Architecture
+## 🚀 Deployment Guide (AWS Lightsail)
 
-GEOSUREPATH operates on a modern microservices-inspired architecture:
+The system is optimized for **AWS Lightsail 2GB RAM** instances.
 
-1. **Frontend (React + Vite + Leaflet)**: A highly interactive, dark/light mode SPA with draggable panels and real-time map updates via WebSockets.
-2. **Backend (Node.js + Express + Socket.IO)**: Serves REST APIs for authentication, CRUD operations, reporting, and broadcasts live telemetry from Redis to the frontend via WebSockets.
-3. **TCP Server (Node.js `net` module)**: Dedicated, lightweight server bridging physical GPS hardware (e.g., GT06 protocol) to the software ecosystem. It parses raw hex streams, inserts permanent records into PostgreSQL, and pushes live states to Redis.
-4. **Data Layer**:
-   - **PostgreSQL**: Persistent storage for Users, Devices, Geofences, Alerts, and Historical GPS coordinates.
-   - **Redis**: Ephemeral, ultra-fast storage for live vehicle states (`live:*`) and the device command queue (`cmd_queue:*`).
-
----
-
-## 🛠 Feature Highlight: Remote Engine Blocking
-
-To ensure reliable delivery of critical commands (like Engine Cut-Off), the flow is decoupled:
-1. Admin triggers "Engine Block" on the frontend.
-2. Backend API (`/api/commands/sms`) pushes the raw command (e.g., `RELAY,1#`) into a Redis List (`cmd_queue:{imei}`).
-3. The TCP Server continuously monitors the Redis queue. When the target device sends its next heartbeat or location packet, the TCP Server pops the command and dispatches it directly over the active socket connection to the GPS hardware.
-
----
-
-## 🛡️ Backup System
-A Linux bash script is included (`geosurepath_backup.sh`) for automated database snapshots. It uses `pg_dump` and `rclone` to securely upload encrypted, compressed backups to Google Drive.
-
-Usage:
+### 1. Execute One-Click Installer
 ```bash
-chmod +x geosurepath_backup.sh
-./geosurepath_backup.sh
+sudo bash install.sh
 ```
-*We recommend setting up a daily CRON job for this script.*
+*This script automatically handles swap creation, docker installation, firewall configuration, and Nginx proxying.*
+
+### 2. Verify Services
+```bash
+docker-compose ps
+```
+
+### 3. Setup SSL (Recommended)
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d yourtrackingserver.com
+```
+
+---
+
+## 📁 Repository Structure
+- `/frontend`: React + Premium UI Components
+- `/backend`: Node.js Core API & Worker Services
+- `/tcp-server`: Binary GPS Protocol Parsers
+- `/database`: Schema and Migrations
+- `install.sh`: Master Deployment Script
+
+---
+
+## ☁️ Archiving & Retention
+Data older than 90 days is automatically archived to the following directory:
+[Historical Archives](https://drive.google.com/drive/folders/1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8)

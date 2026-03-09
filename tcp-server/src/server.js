@@ -2,6 +2,7 @@ require('dotenv').config();
 const net = require('net');
 const redis = require('redis');
 const GT06Parser = require('./parsers/gt06');
+const ProtocolDetector = require('./parsers/ProtocolDetector');
 const { Pool } = require('pg');
 
 // Connect to Postgres
@@ -66,8 +67,24 @@ const server = net.createServer((socket) => {
             deviceImei = parsed.imei;
             console.log(`[LOGIN] Device connected: IMEI=${deviceImei} from ${remoteAddr}`);
 
+            // Auto-update protocol and model in DB
+            try {
+                const proto = detection.protocol || 'GT06';
+                await pool.query(
+                    "UPDATE device_inventory SET protocol = $1 WHERE imei = $2 AND (protocol IS NULL OR protocol = 'GT06')", 
+                    [proto, deviceImei]
+                );
+                const modelRes = await pool.query("SELECT id FROM device_models WHERE protocol = $1 LIMIT 1", [proto]);
+                if (modelRes.rows.length > 0) {
+                    await pool.query(
+                        "UPDATE devices SET model_id = $1 WHERE imei = $2 AND model_id IS NULL",
+                        [modelRes.rows[0].id, deviceImei]
+                    );
+                }
+            } catch(e) { console.error('[DB] Auto-link Error:', e.message); }
+
             // Send proper ACK
-            const ack = GT06Parser.getResponse('LOGIN', parsed.serial || 1);
+            const ack = (detection.protocol === 'GT06') ? GT06Parser.getResponse('LOGIN', parsed.serial || 1) : null;
             if (ack) {
                 socket.write(ack);
                 console.log(`[ACK] Login ACK sent to ${deviceImei}`);
@@ -135,7 +152,7 @@ const server = net.createServer((socket) => {
             console.log(`[HEARTBEAT] From ${deviceImei || remoteAddr}`);
 
             // Send proper ACK
-            const ack = GT06Parser.getResponse('HEARTBEAT', parsed.serial || 1);
+            const ack = (detection.protocol === 'GT06') ? GT06Parser.getResponse('HEARTBEAT', parsed.serial || 1) : null;
             if (ack) socket.write(ack);
 
             // Check for pending commands in queue (engine cut/restore)
@@ -146,6 +163,17 @@ const server = net.createServer((socket) => {
                         console.log(`[COMMAND] Dispatching to ${deviceImei}: ${cmd}`);
                         const cmdBuf = Buffer.from(cmd, 'hex');
                         socket.write(cmdBuf);
+
+                        // Update command_logs to SENT
+                        try {
+                            const devRes = await pool.query("SELECT id FROM devices WHERE imei = $1", [deviceImei]);
+                            if (devRes.rows.length > 0) {
+                                await pool.query(
+                                    "UPDATE command_logs SET status = 'SENT', sent_at = NOW() WHERE id = (SELECT id FROM command_logs WHERE device_id = $1 AND status = 'PENDING' ORDER BY created_at ASC LIMIT 1)",
+                                    [devRes.rows[0].id]
+                                );
+                            }
+                        } catch(e) { console.error('[DB] Failed to update command log status:', e.message); }
                     }
                 } catch (err) {
                     console.error(`[Redis] Command queue error for ${deviceImei}:`, err);

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Dark cab -->
+  <rect x="10" y="2" width="20" height="13" rx="4" fill="#334155"/>
+  <!-- Cab windshield -->
+  <rect x="12" y="4" width="16" height="7" rx="2" fill="rgba(147,210,255,0.75)"/>
+  <!-- Cab–trailer divider -->
+  <rect x="10" y="14.5" width="20" height="2" rx="0" fill="#1e293b"/>
+  <!-- Silver trailer body -->
+  <rect x="10" y="16" width="20" height="22" rx="2" fill="#cbd5e1"/>
+  <!-- Trailer ribbing lines -->
+  <rect x="10" y="22" width="20" height="1" fill="rgba(0,0,0,0.12)"/>
+  <rect x="10" y="28" width="20" height="1" fill="rgba(0,0,0,0.12)"/>
+  <rect x="10" y="34" width="20" height="1" fill="rgba(0,0,0,0.1)"/>
+  <!-- Headlights -->
+  <rect x="10" y="3" width="5" height="2.5" rx="1" fill="#fef08a"/>
+  <rect x="25" y="3" width="5" height="2.5" rx="1" fill="#fef08a"/>
+  <!-- Taillights -->
+  <rect x="10" y="35.5" width="5" height="2.5" rx="1" fill="#f87171"/>
+  <rect x="25" y="35.5" width="5" height="2.5" rx="1" fill="#f87171"/>
+  <!-- Cab wheels (front) -->
+  <rect x="7" y="4" width="3.5" height="7" rx="1.5" fill="#1e293b"/>
+  <rect x="29.5" y="4" width="3.5" height="7" rx="1.5" fill="#1e293b"/>
+  <!-- Dual rear wheels -->
+  <rect x="7" y="27" width="3.5" height="5" rx="1.5" fill="#1e293b"/>
+  <rect x="29.5" y="27" width="3.5" height="5" rx="1.5" fill="#1e293b"/>
+  <rect x="7" y="33" width="3.5" height="5" rx="1.5" fill="#1e293b"/>
+  <rect x="29.5" y="33" width="3.5" height="5" rx="1.5" fill="#1e293b"/>
+  <!-- Rim details -->
+  <rect x="8" y="6" width="1.5" height="3" rx="0.5" fill="#64748b"/>
+  <rect x="30.5" y="6" width="1.5" height="3" rx="0.5" fill="#64748b"/>
+</svg>

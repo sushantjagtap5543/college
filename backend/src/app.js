@@ -14,6 +14,21 @@ const fs = require('fs');
 const path = require('path');
 
 const app = express();
+const CommandFactory = {
+    'GT06': (commandType) => {
+        const s = commandType === 'ENGINE_STOP' ? 'Relay,1#' : 'Relay,0#';
+        const b = Buffer.from(s, 'ascii');
+        const d = Buffer.concat([Buffer.from([b.length, 0, 0, 0, 1]), b, Buffer.from([0, 2])]);
+        const p = Buffer.concat([Buffer.from([d.length + 3, 0x80]), d, Buffer.from([0, 1])]);
+        let c = 0xFFFF; for (const x of p) { c ^= x; for (let i = 0; i < 8; i++) c = (c & 1) ? (c >> 1) ^ 0xA001 : (c >> 1); }
+        return Buffer.concat([Buffer.from([0x78, 0x78]), p, Buffer.from([c >> 8, c & 0xFF, 0x0D, 0x0A])]).toString('hex');
+    },
+    'TK103': (commandType) => Buffer.from(commandType === 'ENGINE_STOP' ? 'stop123456' : 'resume123456', 'ascii').toString('hex'),
+    'H02': (commandType) => Buffer.from(commandType === 'ENGINE_STOP' ? '*HQ,MOBIL,S20,000000,1#' : '*HQ,MOBIL,S20,000000,0#', 'ascii').toString('hex'),
+    'Teltonika': (commandType) => Buffer.from(commandType === 'ENGINE_STOP' ? 'setdigout 1' : 'setdigout 0', 'ascii').toString('hex')
+};
+
+
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
@@ -46,36 +61,59 @@ const pool = new Pool({
     port: 5432,
 });
 
+// Admin Provisioning Logic
+const ensureAdminExists = async () => {
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@geosurepath.com';
+    const adminPass = process.env.ADMIN_PASSWORD || 'admin@123';
+
+    try {
+        const result = await pool.query("SELECT COUNT(*) FROM users");
+        if (parseInt(result.rows[0].count) === 0) {
+            console.log(`[INIT] No users found. Provisioning admin: ${adminEmail}`);
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(adminPass, salt);
+
+            const roleRes = await pool.query("SELECT id FROM roles WHERE name = 'ADMIN'");
+            if (roleRes.rows.length === 0) {
+                console.error("[INIT] ADMIN role not found in database. Please run schema.sql first.");
+                return;
+            }
+            const roleId = roleRes.rows[0].id;
+
+            await pool.query(
+                "INSERT INTO users (role_id, name, email, password_hash, plain_password) VALUES ($1, $2, $3, $4, $5)",
+                [roleId, 'Super Admin', adminEmail, hash, adminPass]
+            );
+            console.log("[INIT] Admin user provisioned successfully.");
+        }
+    } catch (e) {
+        console.error("[INIT] Admin provisioning check failed:", e.message);
+    }
+};
+
+ensureAdminExists();
+
 // Redis Client (with robust fallback)
 let redisClient;
+const createMockRedis = () => ({
+    on: () => { },
+    connect: async () => console.log('[Redis_MOCK] Operating in Virtual Mode'),
+    get: async () => null,
+    set: async () => 'OK',
+    rPush: async () => 1,
+    del: async () => 1,
+    keys: async () => []
+});
+
 try {
     redisClient = redis.createClient({
         url: `redis://${process.env.REDIS_HOST || 'localhost'}:6379`,
-        socket: {
-            reconnectStrategy: (retries) => {
-                if (retries > 5) {
-                    console.log('Redis Connection: Max retries reached, continuing without Redis');
-                    return false; // stop retrying
-                }
-                return Math.min(retries * 50, 2000); // retry with modest backoff
-            }
-        }
+        socket: { reconnectStrategy: (retries) => (retries > 2 ? false : 500) }
     });
-
-    redisClient.on('error', (err) => {
-        // Silently log and ignore redis errors once we've reported them
-        if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET') {
-            console.log(`[Redis] Service unavailable at ${process.env.REDIS_HOST || 'localhost'}:6379`);
-        } else {
-            console.error('[Redis] Unexpected Error:', err);
-        }
-    });
-
-    redisClient.connect()
-        .then(() => console.log('Connected to Redis'))
-        .catch((err) => console.log('[Redis] Initial connection failed, but server will continue.'));
+    redisClient.on('error', () => { redisClient = createMockRedis(); });
+    redisClient.connect().catch(() => { redisClient = createMockRedis(); });
 } catch (e) {
-    console.error('[Redis] Client creation failed:', e);
+    redisClient = createMockRedis();
 }
 
 // Global Process Protection: Prevent crashes from unhandled socket errors (common in dev/no-docker)
@@ -89,7 +127,11 @@ process.on('uncaughtException', (err) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.warn('[NETWORK] Unhandled Rejection at:', promise, 'reason:', reason);
+    if (reason && (reason.code === 'ECONNREFUSED' || reason.code === 'ECONNRESET')) {
+        console.log(`[NETWORK] suppressed unhandled rejection: ${reason.message}`);
+    } else {
+        console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
+    }
 });
 
 // WebSocket
@@ -333,39 +375,30 @@ app.post('/api/login', async (req, res) => {
             WHERE u.email = $1 AND u.is_active = true
         `, [email]);
 
+        if (result.rows.length === 0) {
+            return res.status(401).json({ status: 'ERROR', message: 'Invalid credentials.' });
+        }
+
         const user = result.rows[0];
 
-        if (user && user.is_blocked) {
+        if (user.is_blocked) {
             return res.status(403).json({ status: 'ERROR', message: 'Account blocked. Please contact support.' });
         }
 
-        // REAL BCRYPT verification
-        if (user && await bcrypt.compare(password, user.password_hash)) {
+        const isValid = await bcrypt.compare(password, user.password_hash);
+        if (isValid) {
             res.json({
                 status: 'SUCCESS',
                 user: { id: user.id, name: user.name, email: user.email, role: user.role }
-            });
-        } else if (email === 'admin@geosurepath.com' && password === 'admin123') {
-            // Hardcoded fallback admin for testing
-            res.json({
-                status: 'SUCCESS',
-                user: { id: 'admin_mock_id', name: 'Super Admin', email: 'admin@geosurepath.com', role: 'ADMIN' }
             });
         } else {
             res.status(401).json({ status: 'ERROR', message: 'Invalid credentials.' });
         }
     } catch (err) {
         console.error('Login Error:', err);
-        // Fallback for dev mode
-        if (email === 'admin@geosurepath.com' && password === 'admin123') {
-            res.json({
-                status: 'SUCCESS',
-                user: { id: 'admin_mock_id', name: 'Super Admin', email: 'admin@geosurepath.com', role: 'ADMIN' }
-            });
-        } else {
-            res.status(500).json({ status: 'ERROR', message: 'Login failed.' });
-        }
+        res.status(500).json({ status: 'ERROR', message: 'Internal server error.' });
     }
+});
 });
 
 // 1.7. Password Reset Endpoint (for logged-in users)
@@ -439,14 +472,56 @@ app.post('/api/forgot-password', async (req, res) => {
     }
 });
 
+// Profile Update
+app.post('/api/update-profile', async (req, res) => {
+    const { userId, name, email } = req.body;
+    try {
+        await pool.query("UPDATE users SET name = $1, email = $2 WHERE id = $3", [name, email, userId]);
+        const result = await pool.query("SELECT id, name, email, role_id FROM users WHERE id = $1", [userId]);
+        // Re-fetch role name for frontend
+        const roleQuery = await pool.query("SELECT name FROM roles WHERE id = $1", [result.rows[0].role_id]);
+
+        const updatedUser = {
+            id: result.rows[0].id,
+            name: result.rows[0].name,
+            email: result.rows[0].email,
+            role: roleQuery.rows.length > 0 ? roleQuery.rows[0].name : 'CLIENT'
+        };
+        res.json({ status: 'SUCCESS', user: updatedUser });
+    } catch (err) {
+        console.error('Update Profile Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to update profile.' });
+    }
+});
+
+// Password Reset (Settings)
+app.post('/api/reset-password', async (req, res) => {
+    const { userId, currentPassword, newPassword } = req.body;
+    try {
+        const result = await pool.query("SELECT password_hash FROM users WHERE id = $1", [userId]);
+        if (result.rows.length === 0) return res.status(404).json({ status: 'ERROR', message: 'User not found.' });
+
+        const isMatch = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+        if (!isMatch) return res.status(400).json({ status: 'ERROR', message: 'Incorrect current password.' });
+
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(newPassword, salt);
+        await pool.query("UPDATE users SET password_hash = $1, plain_password = $2 WHERE id = $3", [passwordHash, newPassword, userId]);
+        res.json({ status: 'SUCCESS' });
+    } catch (err) {
+        console.error('Reset Password Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to update password.' });
+    }
+});
+
 // 2. Add Device to Inventory (Admin)
 app.post('/api/inventory', async (req, res) => {
-    const { imei, sim, status } = req.body;
+    const { imei, sim, status, protocol } = req.body;
     try {
         const isAssigned = status !== 'Unassigned';
         const result = await pool.query(
-            "INSERT INTO device_inventory (imei, sim_number, is_assigned) VALUES ($1, $2, $3) RETURNING *",
-            [imei, sim, isAssigned]
+            "INSERT INTO device_inventory (imei, sim_number, is_assigned, protocol) VALUES ($1, $2, $3, $4) RETURNING *",
+            [imei, sim, isAssigned, protocol || 'GT06']
         );
         res.json({ status: 'SUCCESS', device: result.rows[0] });
     } catch (err) {
@@ -630,24 +705,18 @@ cron.schedule('0 1 * * *', async () => {
 // 5. Fetch Today's KPIs
 app.get('/api/stats', async (req, res) => {
     try {
-        let totalCount = 12;
-        try {
-            const totalDevices = await pool.query("SELECT COUNT(*) FROM device_inventory");
-            totalCount = parseInt(totalDevices.rows[0].count);
-        } catch (dbErr) {
-            console.warn('DB Query failed for /stats, using fallback mock.');
-        }
+        const totalDevices = await pool.query("SELECT COUNT(*) FROM device_inventory");
         res.json({
             status: 'SUCCESS',
             stats: {
-                totalFleet: totalCount || 12,
-                movingNow: 8,
-                distanceToday: 482,
-                avgEcoScore: 94
+                totalFleet: parseInt(totalDevices.rows[0].count),
+                movingNow: 0, // Would need more complex query for real-time
+                distanceToday: 0,
+                avgEcoScore: 100
             }
         });
     } catch (err) {
-        res.json({ status: 'SUCCESS', stats: { totalFleet: 12, movingNow: 8, distanceToday: 482, avgEcoScore: 94 } });
+        res.status(500).json({ status: 'ERROR', message: 'Failed to fetch stats.' });
     }
 });
 
@@ -692,37 +761,24 @@ app.get('/api/fleet', async (req, res) => {
                 }
             }
         } catch (redisErr) {
-            console.warn('Redis failed for /fleet, providing demo vehicle.');
-            const demoImei = '869727079043558';
-            if (role === 'ADMIN' || allowedImeis.has(demoImei)) {
-                const meta = vehicleMetadata[demoImei] || {};
-                fleet.push({
-                    id: demoImei,
-                    vehicle_id: meta.vehicle_id,
-                    name: meta.vehicle_name || `Live Tracker (${demoImei})`,
-                    plate_number: meta.plate_number,
-                    type: 'car',
-                    status: 'moving',
-                    speed: 45,
-                    heading: 120,
-                    lat: 21.1458,
-                    lng: 79.0882,
-                    lastUpdate: Date.now()
-                });
-            }
+            console.error('Redis failed for /fleet:', redisErr.message);
+            return res.status(503).json({ status: 'ERROR', message: 'Live tracking service unavailable.' });
         }
         res.json({ status: 'SUCCESS', fleet });
     } catch (err) {
-        // Absolute fallback for parsing failure
-        res.json({ status: 'SUCCESS', fleet: [{ id: '869727079043558', name: 'Fallback Demo', lat: 21.1458, lng: 79.0882, status: 'moving', speed: 45 }] });
+        console.error('Fleet API Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Internal server error.' });
     }
 });
 
 // 5b. Fetch Alerts
 app.get('/api/alerts', async (req, res) => {
+    const { userId, role } = req.query;
     try {
-        // Mock returning empty alerts for testing until DB linkage
-        res.json({ status: 'SUCCESS', alerts: [] });
+        const result = role === 'ADMIN'
+            ? await pool.query("SELECT a.*, d.imei FROM alerts a JOIN devices d ON a.device_id = d.id ORDER BY timestamp DESC LIMIT 10")
+            : await pool.query("SELECT a.*, d.imei FROM alerts a JOIN devices d ON a.device_id = d.id JOIN vehicles v ON d.id = v.device_id WHERE v.client_id = $1 ORDER BY timestamp DESC LIMIT 10", [userId]);
+        res.json({ status: 'SUCCESS', alerts: result.rows });
     } catch (err) {
         res.status(500).json({ status: 'ERROR', message: 'Failed to fetch alerts.' });
     }
@@ -741,7 +797,7 @@ app.get('/api/history', async (req, res) => {
         // CASE A: Requested range is within 3 months (Server Storage)
         if (fromDate >= threeMonthsAgo) {
             const result = await pool.query(
-                "SELECT latitude as lat, longitude as lng, speed, timestamp, heading FROM gps_telemetry WHERE imei = $1 AND timestamp BETWEEN $2 AND $3 ORDER BY timestamp ASC",
+                "SELECT latitude as lat, longitude as lng, speed, timestamp, heading FROM gps_history WHERE device_id = (SELECT id FROM devices WHERE imei = $1) AND timestamp BETWEEN $2 AND $3 ORDER BY timestamp ASC",
                 [imei, from, to]
             );
             points = result.rows;
@@ -771,13 +827,7 @@ app.get('/api/history', async (req, res) => {
 
 // 6. Send Device Command (Engine Block / Restore / Custom SMS)
 app.post('/api/commands/sms', async (req, res) => {
-    const { deviceId, commandType, isDemo, isAdminSms, adminMobile } = req.body;
-
-    // 1. Safety Block: Demo environments should never trigger actual hardware commands
-    if (isDemo) {
-        console.log(`[SIMULATION] Blocked command ${commandType} to ${deviceId} from Demo account.`);
-        return res.json({ status: 'SUCCESS', message: 'Simulation Mode: Command blocked from leaving Sandbox.', command: commandType });
-    }
+    const { deviceId, commandType, isAdminSms, adminMobile } = req.body;
 
     try {
         let smsBody = '';
@@ -879,6 +929,10 @@ redisSub.connect().then(() => {
             // 2. Continuous Geofence Check
             const { entered, exited } = await checkGeofenceEvents(data.imei, data.lat, data.lng);
 
+            // 3. Overspeed Check (per-vehicle configurable limit, default 80 km/h)
+            const speedKmh = parseFloat(data.speed) || 0;
+            if (speedKmh > 0) await checkOverspeed(data.imei, speedKmh);
+
             entered.forEach(gf => {
                 const alert = { type: 'GEOFENCE_ENTER', imei: data.imei, fenceName: gf.name, timestamp: new Date() };
                 io.to(`imei_${data.imei}`).emit('VEHICLE_ALERT', alert);
@@ -902,6 +956,448 @@ redisSub.connect().then(() => {
 });
 
 
+
+
+// ==========================================
+// ==========================================
+// SPEED LIMIT — Migration + APIs  
+// ==========================================
+
+// Ensure speed_limit column exists
+pool.query('ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS speed_limit INTEGER NOT NULL DEFAULT 80').catch(e => console.warn('[DB] speed_limit:', e?.message));
+pool.query("ALTER TABLE device_inventory ADD COLUMN IF NOT EXISTS protocol VARCHAR(50) DEFAULT 'GT06'").catch(e => console.warn('[DB] protocol:', e?.message));
+
+// Per-IMEI overspeed cooldown (one alert per 5 minutes)
+const lastOverspeedAlert = {};
+const checkOverspeed = async (imei, speedKmh) => {
+    try {
+        const now = Date.now();
+        if (lastOverspeedAlert[imei] && now - lastOverspeedAlert[imei] < 300000) return;
+        const vRes = await pool.query('SELECT v.speed_limit, v.vehicle_name, v.plate_number FROM vehicles v JOIN devices d ON d.id=v.device_id WHERE d.imei=$1 AND v.is_active=true LIMIT 1', [imei]);
+        const speedLimit = vRes.rows[0]?.speed_limit ?? 80;
+        if (speedKmh <= speedLimit) return;
+        const vName = vRes.rows[0]?.vehicle_name || imei;
+        const plate = vRes.rows[0]?.plate_number || '';
+        const msg = 'Overspeed: ' + vName + ' (' + plate + ') at ' + speedKmh + ' km/h (limit: ' + speedLimit + ' km/h)';
+        lastOverspeedAlert[imei] = now;
+        const alert = { type: 'OVERSPEED', imei, message: msg, speed: speedKmh, limit: speedLimit, timestamp: new Date() };
+        io.to('imei_' + imei).emit('VEHICLE_ALERT', alert);
+        io.to('admin_room').emit('VEHICLE_ALERT', alert);
+        pool.query('INSERT INTO alerts (device_id, message, timestamp) SELECT id, $2, NOW() FROM devices WHERE imei=$1', [imei, msg]).catch(() => { });
+        console.log('[OVERSPEED] ' + msg);
+    } catch (e) { }
+};
+
+// GET /api/vehicles
+app.get('/api/vehicles', async (req, res) => {
+    const { userId, role } = req.query;
+    try {
+        const rows = role === 'ADMIN'
+            ? (await pool.query('SELECT v.id,v.vehicle_name,v.plate_number,v.vehicle_type,v.speed_limit,d.imei,u.name as client_name,u.id as client_id FROM vehicles v JOIN devices d ON d.id=v.device_id JOIN users u ON u.id=v.client_id WHERE v.is_active=true ORDER BY u.name,v.vehicle_name')).rows
+            : (await pool.query('SELECT v.id,v.vehicle_name,v.plate_number,v.vehicle_type,v.speed_limit,d.imei FROM vehicles v JOIN devices d ON d.id=v.device_id WHERE v.client_id=$1 AND v.is_active=true ORDER BY v.vehicle_name', [userId])).rows;
+        res.json({ status: 'SUCCESS', vehicles: rows });
+    } catch (e) { res.json({ status: 'SUCCESS', vehicles: [] }); }
+});
+
+// PATCH /api/vehicles/:id/speed-limit  (client)
+app.patch('/api/vehicles/:id/speed-limit', async (req, res) => {
+    const limit = parseInt(req.body.speedLimit);
+    if (isNaN(limit) || limit < 10 || limit > 300) return res.status(400).json({ status: 'ERROR', message: 'Limit must be 10-300 km/h.' });
+    try {
+        await pool.query('UPDATE vehicles SET speed_limit=$1 WHERE id=$2', [limit, req.params.id]);
+        res.json({ status: 'SUCCESS', message: 'Speed limit updated to ' + limit + ' km/h' });
+    } catch (e) { res.status(500).json({ status: 'ERROR', message: 'Failed.' }); }
+});
+
+// PATCH /api/admin/vehicles/:id/speed-limit  (admin override)
+app.patch('/api/admin/vehicles/:id/speed-limit', async (req, res) => {
+    const limit = parseInt(req.body.speedLimit);
+    if (isNaN(limit) || limit < 10 || limit > 300) return res.status(400).json({ status: 'ERROR', message: 'Limit must be 10-300 km/h.' });
+    try {
+        await pool.query('UPDATE vehicles SET speed_limit=$1 WHERE id=$2', [limit, req.params.id]);
+        res.json({ status: 'SUCCESS', message: 'Admin: speed limit set to ' + limit + ' km/h' });
+    } catch (e) { res.status(500).json({ status: 'ERROR', message: 'Failed.' }); }
+});
+
+// GET /api/admin/vehicles  — all vehicles with speed limits
+app.get('/api/admin/vehicles', async (req, res) => {
+    try {
+        const r = await pool.query('SELECT v.id,v.vehicle_name,v.plate_number,v.vehicle_type,v.speed_limit,d.imei,u.name as client_name,u.email as client_email,u.id as client_id FROM vehicles v JOIN devices d ON d.id=v.device_id JOIN users u ON u.id=v.client_id WHERE v.is_active=true ORDER BY u.name,v.vehicle_name');
+        res.json({ status: 'SUCCESS', vehicles: r.rows });
+    } catch (e) { res.json({ status: 'SUCCESS', vehicles: [] }); }
+});
+
+// ==========================================
+// ENHANCED ADMIN CONTROL APIs
+
+// ==========================================
+
+// System Health — uptime, DB stats, Redis ping, backup info
+app.get('/api/admin/system-health', async (req, res) => {
+    const uptimeSeconds = process.uptime();
+    const hours = Math.floor(uptimeSeconds / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const uptime = `${hours}h ${minutes}m`;
+
+    let dbStats = { clients: 0, devices: 0, vehicles: 0, alerts: 0, telemetry: 0, dbSize: 'N/A' };
+    let redisStatus = 'Disconnected';
+    let lastBackup = 'Never';
+
+    try {
+        const [clients, devices, vehicles, alertCount, sizeResult] = await Promise.all([
+            pool.query("SELECT COUNT(*) FROM users WHERE role_id = (SELECT id FROM roles WHERE name='CLIENT')"),
+            pool.query("SELECT COUNT(*) FROM device_inventory"),
+            pool.query("SELECT COUNT(*) FROM vehicles WHERE is_active = true"),
+            pool.query("SELECT COUNT(*) FROM alerts"),
+            pool.query("SELECT pg_size_pretty(pg_database_size(current_database())) as size")
+        ]);
+        dbStats = {
+            clients: parseInt(clients.rows[0].count),
+            devices: parseInt(devices.rows[0].count),
+            vehicles: parseInt(vehicles.rows[0].count),
+            alerts: parseInt(alertCount.rows[0].count),
+            dbSize: sizeResult.rows[0].size
+        };
+    } catch (e) {
+        dbStats = { clients: 0, devices: 0, vehicles: 0, alerts: 0, dbSize: 'Offline' };
+    }
+
+    try {
+        await redisClient.ping();
+        redisStatus = 'Connected';
+    } catch (e) {
+        redisStatus = 'Offline';
+    }
+
+    // Read last backup timestamp if stored
+    const backupLogPath = path.join(__dirname, '../temp/last_backup.txt');
+    if (fs.existsSync(backupLogPath)) {
+        lastBackup = fs.readFileSync(backupLogPath, 'utf8').trim();
+    }
+
+    res.json({
+        status: 'SUCCESS',
+        health: {
+            uptime,
+            dbStats,
+            redisStatus,
+            lastBackup,
+            nodeVersion: process.version,
+            platform: process.platform,
+            memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+            googleDriveFolderId: process.env.GOOGLE_BACKUP_FOLDER_ID || '1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8',
+            googleDriveLink: 'https://drive.google.com/drive/folders/1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8'
+        }
+    });
+});
+
+// Manual Backup Trigger — exports 3-month+ data to Google Drive
+app.post('/api/admin/backup/trigger', async (req, res) => {
+    try {
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+        const result = await pool.query(
+            "SELECT * FROM gps_history WHERE timestamp < $1 LIMIT 50000",
+            [threeMonthsAgo]
+        );
+
+        const fileName = `backup_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
+        const tempDir = path.join(__dirname, '../temp');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+        const filePath = path.join(tempDir, fileName);
+
+        fs.writeFileSync(filePath, JSON.stringify({
+            exportedAt: new Date().toISOString(),
+            totalRecords: result.rows.length,
+            data: result.rows
+        }, null, 2));
+
+        const folderId = process.env.GOOGLE_BACKUP_FOLDER_ID || '1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8';
+        await googleDrive.uploadFile(filePath, folderId);
+
+        // Record backup timestamp
+        fs.writeFileSync(path.join(tempDir, 'last_backup.txt'), new Date().toISOString());
+
+        // Clean old records from DB (keep last 3 months only)
+        if (result.rows.length > 0) {
+            await pool.query("DELETE FROM gps_history WHERE timestamp < $1", [threeMonthsAgo]);
+        }
+
+        fs.unlinkSync(filePath);
+
+        res.json({
+            status: 'SUCCESS',
+            message: `Backup complete. ${result.rows.length} records archived to Google Drive.`,
+            fileName,
+            driveFolder: folderId
+        });
+    } catch (err) {
+        console.error('[Manual Backup] Error:', err);
+        res.status(500).json({ status: 'ERROR', message: `Backup failed: ${err.message}` });
+    }
+});
+
+// Backup Status
+app.get('/api/admin/backup/status', (req, res) => {
+    const backupLogPath = path.join(__dirname, '../temp/last_backup.txt');
+    let lastBackup = null;
+    if (fs.existsSync(backupLogPath)) {
+        lastBackup = fs.readFileSync(backupLogPath, 'utf8').trim();
+    }
+    res.json({
+        status: 'SUCCESS',
+        lastBackup,
+        retentionPolicy: '3 months on server, older data on Google Drive',
+        driveLink: 'https://drive.google.com/drive/folders/1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8'
+    });
+});
+
+// Revenue Stats — based on client registration dates (no separate billing table needed)
+// MRR estimate: count active clients × plan price estimate
+app.get('/api/admin/revenue', async (req, res) => {
+    try {
+        // Group clients by registration month for a bar chart
+        const monthlyReg = await pool.query(`
+            SELECT
+                TO_CHAR(created_at, 'Mon YYYY') as month,
+                TO_CHAR(created_at, 'YYYY-MM') as month_key,
+                COUNT(*) as new_clients
+            FROM users
+            WHERE role_id = (SELECT id FROM roles WHERE name = 'CLIENT')
+            GROUP BY month, month_key
+            ORDER BY month_key DESC
+            LIMIT 12
+        `);
+
+        // Per-client billing reference: reg date + 1 year = next billing due
+        const clientBilling = await pool.query(`
+            SELECT u.id, u.name, u.email, u.created_at as registered_at,
+                   COUNT(v.id) as vehicles,
+                   u.is_blocked
+            FROM users u
+            LEFT JOIN vehicles v ON u.id = v.client_id AND v.is_active = true
+            WHERE u.role_id = (SELECT id FROM roles WHERE name = 'CLIENT')
+            GROUP BY u.id, u.name, u.email, u.created_at, u.is_blocked
+            ORDER BY u.created_at DESC
+        `);
+
+        const totalClients = clientBilling.rows.length;
+
+        // Estimated MRR: assume ₹500/device/month
+        const totalVehicles = clientBilling.rows.reduce((sum, c) => sum + parseInt(c.vehicles || 0), 0);
+        const estimatedMRR = totalVehicles * 500;
+
+        res.json({
+            status: 'SUCCESS',
+            revenue: {
+                totalClients,
+                totalActiveVehicles: totalVehicles,
+                estimatedMRR,
+                estimatedARR: estimatedMRR * 12,
+                monthlyRegistrations: monthlyReg.rows.reverse(),
+                clientBillingReference: clientBilling.rows.map(c => ({
+                    ...c,
+                    nextBillingDue: new Date(new Date(c.registered_at).setFullYear(
+                        new Date(c.registered_at).getFullYear() + 1
+                    )).toISOString().split('T')[0]
+                }))
+            }
+        });
+    } catch (err) {
+        console.error('[Revenue API] Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to calculate revenue stats.' });
+    }
+});
+
+// Full Alert Log — with pagination and filters
+app.get('/api/admin/alerts/all', async (req, res) => {
+    const { page = 1, limit = 50, imei, type } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    try {
+        let whereClause = '';
+        const params = [parseInt(limit), offset];
+        const conditions = [];
+        if (imei) { params.push(imei); conditions.push(`d.imei = $${params.length}`); }
+        if (type) { params.push(`%${type}%`); conditions.push(`a.message ILIKE $${params.length}`); }
+        if (conditions.length) whereClause = 'WHERE ' + conditions.join(' AND ');
+
+        const countResult = await pool.query(`
+            SELECT COUNT(*) FROM alerts a
+            JOIN devices d ON a.device_id = d.id ${whereClause}
+        `, params.slice(2));
+
+        const result = await pool.query(`
+            SELECT a.id, a.message, a.timestamp, d.imei, v.vehicle_name, v.plate_number
+            FROM alerts a
+            JOIN devices d ON a.device_id = d.id
+            LEFT JOIN vehicles v ON d.id = v.device_id AND v.is_active = true
+            ${whereClause}
+            ORDER BY a.timestamp DESC
+            LIMIT $1 OFFSET $2
+        `, params);
+
+        res.json({
+            status: 'SUCCESS',
+            total: parseInt(countResult.rows[0].count),
+            page: parseInt(page),
+            alerts: result.rows
+        });
+    } catch (err) {
+        console.error('Full Alerts Log Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Internal server error.' });
+    }
+});
+
+
+
+
+app.post('/api/commands/gprs', async (req, res) => {
+    const { imei, commandType, params = {} } = req.body;
+    try {
+        // 1. Get device details (protocol, model_id, etc.)
+        const devRes = await pool.query(
+            "SELECT i.protocol, d.model_id, i.sim_number FROM device_inventory i JOIN devices d ON i.imei = d.imei WHERE i.imei = $1",
+            [imei]
+        );
+        const dev = devRes.rows[0];
+        if (!dev) return res.status(404).json({ status: 'ERROR', message: 'Device not found' });
+
+        let finalCommandHex;
+
+        // 2. Check for dynamic command template in DB
+        const logicalRes = await pool.query("SELECT id FROM logical_commands WHERE command_alias = $1", [commandType]);
+        if (logicalRes.rows.length > 0 && dev.model_id) {
+            const cmdMapRes = await pool.query(
+                "SELECT actual_payload FROM device_command_map WHERE model_id = $1 AND logical_command_id = $2",
+                [dev.model_id, logicalRes.rows[0].id]
+            );
+            if (cmdMapRes.rows.length > 0) {
+                let template = cmdMapRes.rows[0].actual_payload;
+                // Substitute variables: {imei}, {phone}, {p1}, {p2}...
+                template = template.replace(/{imei}/g, imei);
+                template = template.replace(/{phone}/g, dev.sim_number || '');
+                Object.keys(params).forEach(k => {
+                    template = template.replace(new RegExp(`{${k}}`, 'g'), params[k]);
+                });
+
+                // Convert to hex if it's a string command, or keep as hex if it's already hex
+                // Simple heuristic: if it looks like GT06 hex, it's hex, else ASCII
+                if (/^[0-9A-Fa-f]+$/.test(template) && template.length % 2 === 0) {
+                    finalCommandHex = template;
+                } else {
+                    finalCommandHex = Buffer.from(template, 'ascii').toString('hex');
+                }
+            }
+        }
+
+        // 3. Fallback to CommandFactory if no DB template
+        if (!finalCommandHex) {
+            const proto = (dev.protocol || 'GT06').toUpperCase();
+            const builder = CommandFactory[proto] || CommandFactory['GT06'];
+            finalCommandHex = builder(commandType);
+        }
+
+        // 4. Queue in Redis
+        await redisClient.rPush(`cmd_queue:${imei}`, finalCommandHex);
+
+        // 5. Log in DB for verification
+        try {
+            await pool.query(
+                "INSERT INTO command_logs (device_id, logical_command_id, status) SELECT d.id, lc.id, 'PENDING' FROM devices d, logical_commands lc WHERE d.imei = $1 AND lc.command_alias = $2",
+                [imei, commandType]
+            );
+        } catch (e) { console.error('[DB] Failed to log command:', e.message); }
+
+        res.json({ status: 'SUCCESS', hex: finalCommandHex });
+    } catch (e) {
+        console.error('GPRS Error:', e);
+        res.status(500).json({ status: 'ERROR' });
+    }
+});
+
+
+// --- ADMIN MODEL & COMMAND MANAGEMENT ---
+// 6. Get recent command logs
+app.get('/api/admin/command-logs', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT cl.id, cl.status, cl.created_at, cl.sent_at, d.imei, lc.command_alias
+            FROM command_logs cl
+            JOIN devices d ON cl.device_id = d.id
+            JOIN logical_commands lc ON cl.logical_command_id = lc.id
+            ORDER BY cl.created_at DESC
+            LIMIT 50
+        `);
+        res.json({ status: 'SUCCESS', logs: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+
+// 1. Get all device models
+app.get('/api/admin/models', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM device_models ORDER BY model_name ASC");
+        res.json({ status: 'SUCCESS', models: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+// 2. Create/Update device model
+app.post('/api/admin/models', async (req, res) => {
+    const { model_name, protocol } = req.body;
+    try {
+        const result = await pool.query(
+            "INSERT INTO device_models (model_name, protocol) VALUES ($1, $2) ON CONFLICT (model_name) DO UPDATE SET protocol = EXCLUDED.protocol RETURNING *",
+            [model_name, protocol]
+        );
+        res.json({ status: 'SUCCESS', model: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+// 3. Get all logical commands
+app.get('/api/admin/logical-commands', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM logical_commands ORDER BY command_alias ASC");
+        res.json({ status: 'SUCCESS', commands: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+// 4. Get command mappings for a model
+app.get('/api/admin/command-maps/:modelId', async (req, res) => {
+    const { modelId } = req.params;
+    try {
+        const result = await pool.query(`
+            SELECT lc.command_alias, lc.id as logical_id, dcm.actual_payload 
+            FROM logical_commands lc
+            LEFT JOIN device_command_map dcm ON lc.id = dcm.logical_command_id AND dcm.model_id = $1
+        `, [modelId]);
+        res.json({ status: 'SUCCESS', mappings: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+// 5. Update/Upsert command mapping
+app.post('/api/admin/command-maps', async (req, res) => {
+    const { model_id, logical_id, payload } = req.body;
+    try {
+        await pool.query(
+            "INSERT INTO device_command_map (model_id, logical_command_id, actual_payload) VALUES ($1, $2, $3) ON CONFLICT (model_id, logical_command_id) DO UPDATE SET actual_payload = EXCLUDED.actual_payload",
+            [model_id, logical_id, payload]
+        );
+        res.json({ status: 'SUCCESS' });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
 
 // Start Server
 const PORT = process.env.PORT || 8080;

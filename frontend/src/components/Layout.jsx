@@ -18,7 +18,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8080';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8080'
+    : `${window.location.protocol}//${window.location.hostname}`;
 
 const SIDEBAR_ITEMS = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -27,9 +29,7 @@ const SIDEBAR_ITEMS = [
 ];
 
 const BOTTOM_ITEMS = [
-    { path: '/alerts', icon: Bell, label: 'Alerts' },
     { path: '/settings', icon: Settings, label: 'Settings' },
-    { path: '#', icon: UserCircle, label: 'Profile' },
 ];
 
 export default function Layout({ children, user, onLogout }) {
@@ -79,15 +79,21 @@ export default function Layout({ children, user, onLogout }) {
 
     return (
         <div className="flex h-screen w-full bg-[#f3f4f6] overflow-hidden text-slate-800 font-sans selection:bg-blue-500 selection:text-white">
-            {/* Sidebar Navigation - Trackzee Classic Navy */}
+            {/* Sidebar Navigation - GeoSurePath Classic Navy */}
             <aside className="w-[80px] bg-[#1a233a] h-full flex flex-col items-center py-6 z-[100] shadow-xl border-r border-[#2a344a] relative shrink-0">
-                {/* Logo Area */}
+                {/* Logo */}
                 <div
-                    className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-8 cursor-pointer shadow-md"
+                    className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-8 cursor-pointer shadow-lg border border-white/10 overflow-hidden hover:scale-105 transition-transform"
                     onClick={() => navigate('/')}
-                    title="Trackzee Clone"
+                    title="GeoSurePath Dashboard"
                 >
-                    <span className="font-bold text-[#1a233a] text-xs text-center leading-tight">YOUR<br />LOGO<br />HERE</span>
+                    <img
+                        src="/logo.png"
+                        alt="Logo"
+                        className="w-10 h-10 object-contain"
+                        onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                    />
+                    <span className="font-bold text-[#1a233a] text-[8px] text-center leading-tight hidden items-center justify-center">GEO<br />SURE</span>
                 </div>
 
                 <div className="w-8 border-b border-[#2a344a] mb-6" />
@@ -113,7 +119,7 @@ export default function Layout({ children, user, onLogout }) {
                     })}
                 </nav>
 
-                <div className="flex flex-col gap-4 w-full items-center mt-auto pb-4">
+                <div className="flex flex-col gap-6 w-full items-center mt-auto pb-6">
                     {BOTTOM_ITEMS.map((item) => (
                         <Link
                             key={item.label}
@@ -122,7 +128,7 @@ export default function Layout({ children, user, onLogout }) {
                             title={item.label}
                         >
                             <item.icon className="w-5 h-5 mb-1" strokeWidth={1.5} />
-                            <span className="text-[8px] font-bold text-center opacity-60 group-hover:opacity-100">{item.label}</span>
+                            <span className="text-[10px] font-black text-center opacity-40 group-hover:opacity-100 uppercase tracking-tighter">{item.label}</span>
                         </Link>
                     ))}
                     <div className="w-8 border-b border-[#2a344a] my-2" />
@@ -138,7 +144,7 @@ export default function Layout({ children, user, onLogout }) {
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#f3f4f6]">
-                {/* Trackzee Classic Header */}
+                {/* GeoSurePath Classic Header */}
                 <header className="h-14 bg-[#39569c] text-white flex items-center justify-between px-6 z-[90] shrink-0 shadow-md">
                     <div className="flex items-center gap-4">
                         <Menu size={20} className="cursor-pointer hover:text-blue-200" />

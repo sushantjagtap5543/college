@@ -1,123 +1,185 @@
 #!/bin/bash
+# =============================================================================
+# GeoSurePath GPS Platform — AWS Lightsail Production Deployment Script
+# Optimized for: 2GB RAM Instances (Ubuntu 22.04 LTS)
+# =============================================================================
 
-# Exit on error
 set -e
 
-echo "=========================================================="
-echo "      GEOSUREPATH - AWS Lightsail Deployment Script       "
-echo "=========================================================="
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+log()  { echo -e "${GREEN}[✓] $1${NC}"; }
+warn() { echo -e "${YELLOW}[!] $1${NC}"; }
+info() { echo -e "${CYAN}[→] $1${NC}"; }
+err()  { echo -e "${RED}[✗] $1${NC}"; exit 1; }
 
-echo ">>> Phase 1: Cleaning up existing deployments..."
-# Stop and remove all existing docker-compose containers, networks, and images (if any)
-if command -v docker-compose &> /dev/null; then
-    echo "Stopping existing docker-compose services..."
-    sudo docker-compose down -v || true
+echo -e "${CYAN}"
+echo "  GeoSurePath GPS Tracking Platform"
+echo "  Production Deployment Script (AWS Lightsail Optimized)"
+echo -e "${NC}"
+
+# ── 0. Root Check & Workspace ──────────────────────────────────────────────────
+[ "$EUID" -ne 0 ] && err "Please run as root: sudo bash install.sh"
+
+APP_DIR="/opt/geosurepath"
+REPO_URL="https://github.com/sushantjagtap5543/college.git"
+
+# ── 1. RAM Optimization (Swap Creation) ───────────────────────────────────────
+# Critical for 2GB RAM instances during Vite/Docker builds
+if [ ! -f /swapfile ]; then
+    info "Creating 2GB Swap File for build stability..."
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    log "Swap file created and enabled"
+else
+    log "Swap file already exists"
 fi
 
-# Deep clean to prevent conflicts and free up space
-echo "Cleaning up dangling Docker images and volumes..."
-if command -v docker &> /dev/null; then
-    echo "Force removing any explicitly named leftover containers..."
-    sudo docker rm -f gps_postgres gps_redis gps_tcp_server gps_backend gps_frontend gps_traccar 2>/dev/null || true
-    sudo docker system prune -af --volumes || true
+# ── 2. System Update & Dependencies ───────────────────────────────────────────
+info "Updating system packages..."
+apt-get update -y && apt-get upgrade -y
+apt-get install -y curl git nginx ufw build-essential
+log "Base system ready"
+
+# ── 3. Docker & Docker Compose ────────────────────────────────────────────────
+if ! command -v docker &>/dev/null; then
+    info "Installing Docker Engine..."
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable docker && systemctl start docker
+    log "Docker installed"
+else
+    log "Docker already installed"
 fi
 
-echo "Checking for local host processes blocking essential Docker ports (e.g. 5432, 6379, 8080)..."
-# Stop local postgres if it's running on the host
-sudo systemctl stop postgresql 2>/dev/null || true
-sudo systemctl disable postgresql 2>/dev/null || true
-# Stop local redis if it's running on the host
-sudo systemctl stop redis-server 2>/dev/null || true
-
-# Force kill anything holding essential Docker ports
-sudo fuser -k 5432/tcp 2>/dev/null || true
-sudo fuser -k 6379/tcp 2>/dev/null || true
-sudo fuser -k 8080/tcp 2>/dev/null || true
-sudo fuser -k 8082/tcp 2>/dev/null || true
-sudo fuser -k 5000/tcp 2>/dev/null || true
-sudo fuser -k 5001/tcp 2>/dev/null || true
-sudo fuser -k 5023/tcp 2>/dev/null || true
-sudo fuser -k 3000/tcp 2>/dev/null || true
-
-echo "Clean up done!"
-echo "----------------------------------------------------------"
-
-echo ">>> Phase 2: Installing Prerequisites & Optimizing Git..."
-# Prevent RPC failed; curl 92 HTTP/2 stream issues on AWS Lightsail
-git config --global http.postBuffer 524288000
-git config --global http.version HTTP/1.1
-
-# Update package list and upgrade system
-sudo apt-get update -y
-# Install curl, git, docker, and docker-compose if they don't exist
-sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common git
-
-if ! command -v docker &> /dev/null; then
-    echo "Installing Docker..."
-    sudo apt-get install -y docker.io
-    sudo systemctl enable docker
-    sudo systemctl start docker
-    sudo usermod -aG docker $USER
+if ! command -v docker-compose &>/dev/null; then
+    info "Installing Docker Compose..."
+    LATEST_COMPOSE=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
+    curl -L "https://github.com/docker/compose/releases/download/${LATEST_COMPOSE}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    log "Docker Compose installed"
 fi
 
-if ! command -v docker-compose &> /dev/null; then
-    echo "Installing Docker-Compose..."
-    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-    sudo chmod +x /usr/local/bin/docker-compose
+# ── 4. Firewall Hardening ─────────────────────────────────────────────────────
+info "Configuring UFW Firewall..."
+ufw --force reset
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow ssh
+ufw allow 80/tcp     # HTTP (Frontend)
+ufw allow 443/tcp    # HTTPS
+ufw allow 5000/tcp   # GPS Device Port (Main)
+ufw allow 5055/udp   # GPS Device Port (UDP)
+ufw allow 5023/tcp   # GT06 Protocol
+ufw --force enable
+log "Firewall hardened"
+
+# ── 5. Repository Setup ───────────────────────────────────────────────────────
+if [ -d "$APP_DIR" ]; then
+    info "Updating existing codebase..."
+    cd "$APP_DIR" && git pull
+else
+    info "Cloning production codebase to $APP_DIR..."
+    git clone "$REPO_URL" "$APP_DIR"
+fi
+cd "$APP_DIR"
+
+# ── 6. Environment Hardening ───────────────────────────────────────────────────
+if [ ! -f "backend/.env" ]; then
+    info "Generating Production Environment..."
+    cat > "backend/.env" <<ENVEOF
+POSTGRES_USER=gps_admin
+POSTGRES_PASSWORD=$(openssl rand -base64 12)
+POSTGRES_DB=gps_saas
+DB_HOST=db
+REDIS_HOST=redis
+JWT_SECRET=$(openssl rand -base64 32)
+NODE_ENV=production
+PORT=8080
+ADMIN_EMAIL=admin@geosurepath.com
+ADMIN_PASSWORD=admin@123
+GOOGLE_BACKUP_FOLDER_ID=1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8
+ENVEOF
+    log "Environment generated at $APP_DIR/backend/.env"
 fi
 
-echo "Prerequisites installed successfully!"
-echo "----------------------------------------------------------"
+# ── 7. Deployment Orchestration ──────────────────────────────────────────────
+info "Building and starting production containers..."
+# We use build-stage inside Docker to save host memory
+docker-compose build --pull
+docker-compose up -d --remove-orphans
 
-echo ">>> Phase 3: Building and Starting Services (including Port 5000)..."
-# Pull latest images and build the local ones
-sudo docker-compose pull
-echo "Building the platform containers..."
-sudo docker-compose build
+log "Services started successfully"
 
-echo "Starting all services in detached mode..."
-sudo docker-compose up -d
+# ── 8. Nginx Reverse Proxy (Optimized for WebSockets) ────────────────────────
+info "Configuring Nginx Reverse Proxy..."
+SERVER_IP=$(curl -s http://checkip.amazonaws.com || echo "3.108.114.12")
 
-echo "----------------------------------------------------------"
-echo ">>> Phase 4: Configuring Nginx Reverse Proxy (Fixing Port 80)..."
-if ! command -v nginx &> /dev/null; then
-    sudo apt-get install -y nginx
-fi
-
-# Configure Nginx to securely proxy port 80 to the Docker containers
-sudo bash -c 'cat > /etc/nginx/sites-available/default <<EOF
+cat > /etc/nginx/sites-available/geosurepath <<NGINXEOF
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
+    listen 80;
+    server_name _;
 
-    # Frontend (React/Vite)
+    # Frontend
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
     }
 
-    # Backend API
-    location /api {
-        proxy_pass http://localhost:8080;
+    # API Backend
+    location /api/ {
+        proxy_pass http://localhost:8080/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+
+    # WebSocket Support
+    location /socket.io/ {
+        proxy_pass http://localhost:8080/socket.io/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host \$host;
+    }
+
+    # Traccar Proxy (if using image)
+    location /traccar/ {
+        proxy_pass http://localhost:8082/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
     }
 }
-EOF'
+NGINXEOF
 
-# Enable and restart Nginx
-sudo systemctl enable nginx || true
-sudo systemctl restart nginx
-echo "Nginx configured successfully!"
-echo "----------------------------------------------------------"
+ln -sf /etc/nginx/sites-available/geosurepath /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+log "Nginx Proxy Active"
 
-echo ">>> Deployment Complete! GEOSUREPATH is running."
-echo ">>> Live Tracking / TCP Receivers are active on Port 5000."
-echo ">>> Web UI is available on Port 3000."
-echo ">>> Traccar API is available on Port 8082."
-echo ">>> Remember to open Ports 80, 443, 3000, 5000, 8080, 8082 in the AWS Lightsail Firewall."
-echo "=========================================================="
+# ── 9. Final Summary ──────────────────────────────────────────────────────────
+echo -e "\n${GREEN}================================================================${NC}"
+echo -e "${GREEN}   GeoSurePath Deployment Complete! 🚀                          ${NC}"
+echo -e "${GREEN}================================================================${NC}"
+echo -e "\nAccess URLs:"
+echo -e "  Main Portal: http://${SERVER_IP}"
+echo -e "  Admin Login: admin@geosurepath.com / admin@123"
+echo -e "\nImportant Ports:"
+echo -e "  5000 (TCP) -> Main GPS Gateway"
+echo -e "  5023 (TCP) -> GT06 Gateway"
+echo -e "  5055 (UDP) -> OsmAnd Gateway"
+echo -e "\nMemory Info:"
+free -h
+echo -e "\n${YELLOW}NEXT STEPS:${NC}"
+echo -e "1. Edit $APP_DIR/backend/.env with your SMTP/Twilio credentials."
+echo -e "2. Install SSL using Certbot: sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx"
+echo ""

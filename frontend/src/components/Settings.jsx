@@ -5,26 +5,82 @@ import {
     Eye, EyeOff
 } from 'lucide-react';
 
+const tabs = [
+    { id: 'profile', label: 'My Profile', icon: User },
+    { id: 'security', label: 'Security & Access', icon: Shield },
+    { id: 'appearance', label: 'Appearance', icon: Sun },
+    { id: 'audit', label: 'Audit Logs', icon: Globe },
+];
+
 export default function Settings({ user, theme, setTheme }) {
     const [activeTab, setActiveTab] = useState('profile');
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [error, setError] = useState(null);
 
-    const tabs = [
-        { id: 'profile', label: 'My Profile', icon: User },
-        { id: 'notifications', label: 'Alert Settings', icon: Bell },
-        { id: 'security', label: 'Security & Access', icon: Shield },
-        { id: 'audit', label: 'Audit Logs', icon: Globe },
-        { id: 'appearance', label: 'Appearance', icon: Sun },
-    ];
+    // Form states
+    const [name, setName] = useState(user?.name || '');
+    const [email, setEmail] = useState(user?.email || '');
+    const [currentPass, setCurrentPass] = useState('');
+    const [newPass, setNewPass] = useState('');
+    const [confirmPass, setConfirmPass] = useState('');
 
-    const handleSave = () => {
+    const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:8080'
+        : `${window.location.protocol}//${window.location.hostname}`;
+
+    const handleSave = async () => {
         setLoading(true);
-        setTimeout(() => {
+        setError(null);
+        setSuccess(false);
+
+        try {
+            if (activeTab === 'profile') {
+                const req = await fetch(`${API_BASE}/api/update-profile`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: user.id, name, email })
+                });
+                const res = await req.json();
+                if (res.status === 'SUCCESS') {
+                    // Update local storage so it persists right away
+                    localStorage.setItem('geosurepath_user', JSON.stringify(res.user));
+                    setSuccess(true);
+                    setTimeout(() => { setSuccess(false); window.location.reload(); }, 1500);
+                } else {
+                    setError(res.message);
+                }
+            } else if (activeTab === 'security') {
+                if (!currentPass || !newPass || newPass !== confirmPass) {
+                    setError('Passwords do not match or fields are empty.');
+                    setLoading(false);
+                    return;
+                }
+                const req = await fetch(`${API_BASE}/api/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: user.id, currentPassword: currentPass, newPassword: newPass })
+                });
+                const res = await req.json();
+                if (res.status === 'SUCCESS') {
+                    setSuccess(true);
+                    setCurrentPass('');
+                    setNewPass('');
+                    setConfirmPass('');
+                    setTimeout(() => setSuccess(false), 3000);
+                } else {
+                    setError(res.message);
+                }
+            } else {
+                // Settings saved for appearance (handled by setTheme immediately)
+                setSuccess(true);
+                setTimeout(() => setSuccess(false), 3000);
+            }
+        } catch (err) {
+            setError('System error. Failed to save.');
+        } finally {
             setLoading(false);
-            setSuccess(true);
-            setTimeout(() => setSuccess(false), 3000);
-        }, 1000);
+        }
     };
 
     return (
@@ -40,7 +96,7 @@ export default function Settings({ user, theme, setTheme }) {
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => { setActiveTab(tab.id); setError(null); setSuccess(false); }}
                             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${activeTab === tab.id
                                 ? 'bg-blue-50 text-blue-600 shadow-sm'
                                 : 'text-slate-500 hover:bg-slate-50'
@@ -55,6 +111,12 @@ export default function Settings({ user, theme, setTheme }) {
                 {/* Main Content */}
                 <main className="flex-1 p-8 overflow-y-auto custom-scrollbar">
                     <div className="max-w-2xl mx-auto space-y-8">
+                        {error && (
+                            <div className="bg-rose-50 text-rose-600 p-4 flex gap-3 items-center rounded-xl border border-rose-200 text-sm font-bold">
+                                <AlertTriangle size={18} /> {error}
+                            </div>
+                        )}
+
                         {activeTab === 'profile' && (
                             <section className="space-y-6">
                                 <div className="flex items-center gap-6 pb-6 border-b border-slate-100">
@@ -71,11 +133,11 @@ export default function Settings({ user, theme, setTheme }) {
                                 <div className="grid grid-cols-2 gap-6">
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
-                                        <input type="text" defaultValue={user?.name} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
+                                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
-                                        <input type="email" defaultValue={user?.email} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
+                                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
                                     </div>
                                 </div>
                             </section>
@@ -95,21 +157,20 @@ export default function Settings({ user, theme, setTheme }) {
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Current Password</label>
                                         <div className="relative">
-                                            <input type="password" placeholder="••••••••" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
+                                            <input type="password" value={currentPass} onChange={e => setCurrentPass(e.target.value)} placeholder="••••••••" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
                                             <Lock size={16} className="absolute right-4 top-3.5 text-slate-300" />
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1.5">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Password</label>
-                                            <input type="password" placeholder="Minimum 8 chars" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
+                                            <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="Minimum 8 chars" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirm New Password</label>
-                                            <input type="password" placeholder="Repeat password" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
+                                            <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} placeholder="Repeat password" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-blue-500 outline-none text-sm font-bold text-slate-800" />
                                         </div>
                                     </div>
-                                    <button className="bg-slate-900 text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-black transition-all">Update Password</button>
                                 </div>
                             </section>
                         )}
@@ -162,14 +223,14 @@ export default function Settings({ user, theme, setTheme }) {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
-                                    <button 
+                                    <button
                                         onClick={() => setTheme('light')}
                                         className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${theme === 'light' ? 'border-blue-600 bg-blue-50/30 shadow-md' : 'border-slate-100 bg-white hover:border-slate-200'}`}
                                     >
                                         <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-amber-500 shadow-inner"><Sun size={24} /></div>
                                         <span className="font-black text-xs uppercase tracking-widest text-slate-700">Light Mode</span>
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => setTheme('dark')}
                                         className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${theme === 'dark' ? 'border-blue-600 bg-slate-800 shadow-md' : 'border-slate-100 bg-white hover:border-slate-200'}`}
                                     >

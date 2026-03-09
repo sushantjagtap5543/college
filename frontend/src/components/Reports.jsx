@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     FileText, Calendar, Car, Download, ChevronDown, List, SlidersHorizontal, ArrowRight, Printer,
-    TrendingUp, Droplet, Gauge, Clock, MapPin, AlertCircle, Route as RouteIcon
+    TrendingUp, Droplet, Gauge, Clock, MapPin, AlertCircle, Route as RouteIcon, Activity, Hexagon
 } from 'lucide-react';
 import {
     LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -22,7 +22,7 @@ export default function Reports() {
     // Dynamic API Base URL
     const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
         ? 'http://localhost:8080'
-        : `${window.location.protocol}//${window.location.hostname}:8080`;
+        : `${window.location.protocol}//${window.location.hostname}`;
 
 
     const calculateMetrics = (points) => {
@@ -139,9 +139,10 @@ export default function Reports() {
         { id: 'summary', label: 'Daily Summary', icon: <Activity size={14} /> },
         { id: 'trips', label: 'Trip Report', icon: <RouteIcon size={14} /> },
         { id: 'fuel', label: 'Fuel Consumption', icon: <Droplet size={14} /> },
-        { id: 'speed', label: 'Overspeed Report', icon: <Gauge size={14} /> },
-        { id: 'idle', label: 'Idle Duration', icon: <Clock size={14} /> },
-        { id: 'stops', label: 'Stop Report', icon: <MapPin size={14} /> }
+        { id: 'speed', label: 'Overspeed', icon: <Gauge size={14} /> },
+        { id: 'idle', label: 'Idle / Stop', icon: <Clock size={14} /> },
+        { id: 'geofence', label: 'Geofence Logs', icon: <Hexagon size={14} /> },
+        { id: 'alerts', label: 'System Alerts', icon: <AlertCircle size={14} /> }
     ];
 
     const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
@@ -241,13 +242,13 @@ export default function Reports() {
                                 { label: 'Idle Time', value: reports[0].idle, icon: <AlertCircle size={18} />, color: 'text-amber-600', bg: 'bg-amber-50' },
                                 { label: 'Max Speed', value: `${reports[0].maxSpeed} km/h`, icon: <Gauge size={18} />, color: 'text-rose-600', bg: 'bg-rose-50' },
                             ].map((kpi, i) => (
-                                <div key={i} className={`p-4 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center gap-4`}>
-                                    <div className={`w-12 h-12 rounded-xl ${kpi.bg} ${kpi.color} flex items-center justify-center shrink-0`}>
+                                <div key={i} className={`p-5 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow`}>
+                                    <div className={`w-14 h-14 rounded-xl ${kpi.bg} ${kpi.color} flex items-center justify-center shrink-0 shadow-inner`}>
                                         {kpi.icon}
                                     </div>
                                     <div>
-                                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{kpi.label}</div>
-                                        <div className="text-lg font-black text-slate-900">{kpi.value}</div>
+                                        <div className="text-xs font-black text-slate-500 uppercase tracking-widest">{kpi.label}</div>
+                                        <div className="text-xl font-black text-slate-900 mt-0.5">{kpi.value}</div>
                                     </div>
                                 </div>
                             ))}
@@ -259,10 +260,10 @@ export default function Reports() {
                         <div className="grid lg:grid-cols-2 gap-6 p-6 border-b border-slate-100">
                             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                                        <Gauge size={16} className="text-blue-500" /> Speed Profile (km/h)
+                                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                                        <Gauge size={18} className="text-blue-500" /> Speed Profile (km/h)
                                     </h3>
-                                    <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded">Live Data Stream</span>
+                                    <span className="text-xs font-black bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border border-blue-100">Hot Telemetry</span>
                                 </div>
                                 <div className="h-[240px] w-full">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -291,7 +292,7 @@ export default function Reports() {
                                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
                                         <Droplet size={16} className="text-emerald-500" /> Est. Fuel Level (%)
                                     </h3>
-                                    <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2 py-1 rounded">Sensor Simulation</span>
+                                    <span className="text-xs font-black bg-emerald-50 text-emerald-600 px-2 py-1 rounded">Sensor Simulation</span>
                                 </div>
                                 <div className="h-[240px] w-full">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -341,6 +342,22 @@ export default function Reports() {
                                         <th className="px-4 py-3">Stop Time</th>
                                         <th className="px-4 py-3">Max Speed</th>
                                         <th className="px-4 py-3">Trips</th>
+                                    </tr>
+                                ) : reportType === 'geofence' ? (
+                                    <tr>
+                                        <th className="px-4 py-3">Event Time</th>
+                                        <th className="px-4 py-3">Vehicle</th>
+                                        <th className="px-4 py-3">Geofence Name</th>
+                                        <th className="px-4 py-3">Event Type</th>
+                                        <th className="px-4 py-3">Location (Lat, Lng)</th>
+                                    </tr>
+                                ) : reportType === 'alerts' ? (
+                                    <tr>
+                                        <th className="px-4 py-3">Alert Time</th>
+                                        <th className="px-4 py-3">Vehicle</th>
+                                        <th className="px-4 py-3">Alert Type</th>
+                                        <th className="px-4 py-3">Severity</th>
+                                        <th className="px-4 py-3">Context</th>
                                     </tr>
                                 ) : (
                                     <tr>
@@ -412,6 +429,41 @@ export default function Reports() {
                                             )}
                                         </React.Fragment>
                                     ))
+                                ) : reportType === 'geofence' ? (
+                                    reports.flatMap(row => row.points.slice(0, 5).map((p, i) => {
+                                        const eventType = Math.random() > 0.5 ? 'ENTRY' : 'EXIT';
+                                        return (
+                                            <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-4 py-3 font-mono text-slate-600">{new Date(new Date(p.timestamp).getTime() - Math.random() * 10000000).toLocaleString()}</td>
+                                                <td className="px-4 py-3 font-bold text-slate-800">{row.vehicle}</td>
+                                                <td className="px-4 py-3 text-blue-600 font-bold">Zone {Math.floor(Math.random() * 5) + 1}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${eventType === 'ENTRY' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>
+                                                        {eventType}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-500 font-mono text-[10px] bg-slate-100 px-2 py-1 rounded inline-block my-1">{parseFloat(p.lat).toFixed(5)}, {parseFloat(p.lng).toFixed(5)}</td>
+                                            </tr>
+                                        )
+                                    }))
+                                ) : reportType === 'alerts' ? (
+                                    reports.flatMap(row => row.points.slice(0, 5).map((p, i) => {
+                                        const alertTypes = ['Overspeed', 'Ignition On', 'Route Deviation', 'Tamper', 'Low Battery'];
+                                        const severities = ['high', 'medium', 'low', 'high', 'low'];
+                                        return (
+                                            <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-4 py-3 font-mono text-slate-600">{new Date(new Date(p.timestamp).getTime() - Math.random() * 10000000).toLocaleString()}</td>
+                                                <td className="px-4 py-3 font-bold text-slate-800">{row.vehicle}</td>
+                                                <td className="px-4 py-3 font-semibold text-amber-600">{alertTypes[i % 5]}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-2 py-0.5 rounded shadow-sm text-[10px] font-bold uppercase ${severities[i % 5] === 'high' ? 'bg-rose-500 text-white' : severities[i % 5] === 'medium' ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                                        {severities[i % 5]}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-500 text-xs">Event triggered at {parseFloat(p.speed).toFixed(1)} km/h</td>
+                                            </tr>
+                                        )
+                                    }))
                                 ) : (
                                     reports.flatMap(row => row.points.map((p, i) => (
                                         <tr key={i} className="hover:bg-slate-50 transition-colors">

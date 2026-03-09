@@ -13,9 +13,9 @@ import {
     FileText, CreditCard, Droplet, LayoutDashboard, Zap, Menu, X, Hexagon, Route as RouteIcon,
     TrendingDown, CheckSquare, Wrench, FolderOpen, UserCircle, Briefcase, Share2, FileWarning, Smartphone, Monitor, Rocket, Server, DollarSign,
     Play, Pause, FastForward, SkipBack, Rewind, Calendar as CalendarIcon, History,
-    Gauge, Power, MapPin, RefreshCcw, Plus, KeyRound, Eye, EyeOff
+    Gauge, Power, MapPin, RefreshCcw, Plus, KeyRound, Eye, EyeOff, Hash, AlertCircle
 } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, ZoomControl, Polyline, LayerGroup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, ZoomControl, Polyline, LayerGroup, useMap, useMapEvents, Circle, Rectangle, Polygon } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -38,15 +38,15 @@ function MapController({ panTo }) {
 // --- Dynamic API Base URLs to support both local dev and AWS deployment ---
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:8080'
-    : `${window.location.protocol}//${window.location.hostname}:8080`;
+    : `${window.location.protocol}//${window.location.hostname}`;
 
 const WS_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'ws://localhost:8080'
-    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:8080`;
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}`;
 
 const TRACCAR_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:8082'
-    : `${window.location.protocol}//${window.location.hostname}:8082`;
+    : `${window.location.protocol}//${window.location.hostname}/traccar`;
 
 // --- VEHICLE COLOR PALETTE (8 distinct colors for up to 8 vehicles) ---
 const VEHICLE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#f97316'];
@@ -501,7 +501,7 @@ const LandingPage = ({ onLogin }) => {
                     <div className="hidden bg-[#10b981] p-2 rounded-xl shadow-[0_0_16px_rgba(16,185,129,0.35)] group-hover:scale-110 transition-transform items-center justify-center">
                         <MapIcon className="text-black" size={20} />
                     </div>
-                    <span className="font-black text-xl tracking-tighter hidden sm:block">GEOSURE<span className="text-[#10b981]">PATH</span></span>
+                    <span className="font-black text-2xl tracking-tighter hidden sm:block">GEOSURE<span className="text-[#10b981]">PATH</span></span>
                 </div>
 
                 <nav className="hidden lg:flex items-center gap-10 font-black text-xs uppercase tracking-widest text-slate-500">
@@ -880,81 +880,37 @@ const LoginPage = ({ onLogin }) => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isForgotMode, setIsForgotMode] = useState(false);
-    const [forgotEmail, setForgotEmail] = useState('');
-    const [forgotSuccess, setForgotSuccess] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
-    const handleLogin = async (e, forceRole = null) => {
-        e.preventDefault();
+    const handleLogin = async (e) => {
+        if (e) e.preventDefault();
+
+        if (!email || !password) {
+            setError('Authentication credentials required.');
+            return;
+        }
+
         setIsLoading(true);
         setError('');
 
-        const loginEmail = forceRole === 'ADMIN' ? 'admin@geosurepath.com' : email;
-        const loginPass = forceRole === 'ADMIN' ? 'admin123' : password;
-
-        // If Admin Login button clicked and no backend, do offline bypass immediately
-        if (forceRole === 'ADMIN') {
-            const adminUser = { role: 'ADMIN', name: 'Super Admin', email: 'admin@geosurepath.com', id: 'admin' };
-            try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 3000);
-                const req = await fetch(`${API_BASE}/api/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: loginEmail, password: loginPass }),
-                    signal: controller.signal
-                });
-                clearTimeout(timeout);
-                const data = await req.json();
-                if (data.status === 'SUCCESS') {
-                    onLogin(data.user);
-                    navigate('/admin');
-                    return;
-                }
-            } catch (err) {
-                // Backend unreachable — use offline admin bypass
-            } finally {
-                setIsLoading(false);
-            }
-            onLogin(adminUser);
-            navigate('/admin');
-            return;
-        }
-
-        if (!loginEmail || !loginPass) {
-            setError('Please enter both email and password.');
-            setIsLoading(false);
-            return;
-        }
-
         try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 8000);
             const req = await fetch(`${API_BASE}/api/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: loginEmail, password: loginPass }),
-                signal: controller.signal
+                body: JSON.stringify({ email, password })
             });
-            clearTimeout(timeout);
             const data = await req.json();
 
             if (data.status === 'SUCCESS') {
                 onLogin(data.user);
                 navigate(data.user.role === 'ADMIN' ? '/admin' : '/client');
             } else {
-                setError(data.message || 'Invalid credentials. Try Admin Login for demo.');
+                setError(data.message || 'Invalid credentials.');
             }
         } catch (err) {
-            if (err.name === 'AbortError') {
-                setError('Server unreachable. Use Admin Login for demo access.');
-            } else {
-                // Offline fallback for demo
-                const demoUser = { role: 'CLIENT', name: 'Demo User', email: loginEmail, id: 'demo' };
-                onLogin(demoUser);
-                navigate('/client');
-            }
+            console.error('Login error:', err);
+            setError('System temporarily unavailable. Please try again later.');
         } finally {
             setIsLoading(false);
         }
@@ -962,320 +918,90 @@ const LoginPage = ({ onLogin }) => {
 
     return (
         <div className="min-h-screen flex bg-black font-sans selection:bg-[#10b981] selection:text-black overflow-hidden relative">
-            {/* Background Ambient Glows */}
             <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#10b981]/5 rounded-full blur-[120px] pointer-events-none" />
             <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#0ea5e9]/5 rounded-full blur-[100px] pointer-events-none" />
 
-            {/* LEFT SIDE: Futuristic Visualization */}
             <div className="hidden lg:flex lg:w-3/5 relative flex-col justify-between p-16 overflow-hidden border-r border-white/5">
                 <div className="relative z-10 flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-                    <div className="bg-[#10b981] p-2 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform">
-                        <MapIcon className="text-black" size={24} />
+                    <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform bg-black/30 border border-[#10b981]/30 flex items-center justify-center">
+                        <MapIcon className="text-[#10b981]" size={24} />
                     </div>
-                    <span className="font-black text-2xl text-white tracking-tighter">GEOSURE<span className="text-[#10b981]">PATH.</span></span>
+                    <span className="font-black text-2xl text-white tracking-tighter uppercase italic">GEOSURE<span className="text-[#10b981]">PATH</span></span>
                 </div>
 
                 <div className="relative z-10">
-                    <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 1, ease: "easeOut" }}>
+                    <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 1 }}>
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#10b981]/10 border border-[#10b981]/20 text-[#10b981] text-[10px] font-black uppercase tracking-[0.2em] mb-8">
-                            <Zap size={12} className="fill-current" /> Next-Gen Fleet OS
+                            <Zap size={12} className="fill-current" /> GPS Tracking Platform
                         </div>
-                        <h1 className="text-7xl font-black text-white leading-[0.9] tracking-tighter mb-8">
-                            Control <br />
-                            The <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10b981] to-[#34d399]">Pulse.</span>
+                        <h1 className="text-7xl font-black text-white leading-[0.9] tracking-tighter mb-8 italic">
+                            Platform <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10b981] to-[#34d399]">Access.</span>
                         </h1>
-                        <p className="text-slate-500 text-lg max-w-md mb-12 leading-relaxed font-medium">
+                        <p className="text-slate-500 text-lg max-w-md mb-12 leading-relaxed font-black uppercase tracking-tight">
                             The definitive platform for real-time asset intelligence. Experience zero-latency tracking with absolute precision.
                         </p>
-
-                        <div className="grid grid-cols-2 gap-8 max-w-lg">
-                            {[
-                                { icon: Activity, label: 'Live Echo', desc: 'Active data stream' },
-                                { icon: Shield, label: 'Secured', desc: 'AES-256 Encryption' },
-                                { icon: Database, label: 'Deep Archival', desc: 'Infinite history logs' },
-                                { icon: LayoutDashboard, label: 'Pro Analytics', desc: 'Predictive insights' }
-                            ].map((item, i) => (
-                                <div key={i} className="flex items-start gap-4 group">
-                                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center border border-white/10 group-hover:border-[#10b981]/50 transition-colors">
-                                        <item.icon className="text-[#10b981]" size={22} />
-                                    </div>
-                                    <div>
-                                        <div className="text-white font-black text-sm tracking-tight uppercase">{item.label}</div>
-                                        <div className="text-slate-600 text-xs mt-1 font-medium">{item.desc}</div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
                     </motion.div>
                 </div>
 
                 <div className="relative z-10 flex items-center gap-6 text-slate-600 text-[10px] font-black uppercase tracking-widest">
-                    <span>&copy; {new Date().getFullYear()} CORE VERSION</span>
+                    <span>&copy; {new Date().getFullYear()} CORE OS</span>
                     <button className="hover:text-[#10b981] transition-colors">Infrastructure</button>
                     <button className="hover:text-[#10b981] transition-colors">Security</button>
                 </div>
-
-                {/* Background Map Visual */}
-                <div className="absolute inset-0 z-0 pointer-events-none opacity-20">
-                    <svg className="w-full h-full" viewBox="0 0 800 800">
-                        <path d="M0 400 Q 200 100 400 400 T 800 400" fill="none" stroke="#10b981" strokeWidth="0.5" strokeDasharray="10 10" />
-                        <path d="M0 200 Q 400 600 800 200" fill="none" stroke="#10b981" strokeWidth="0.5" />
-                        <circle cx="400" cy="400" r="150" fill="none" stroke="#10b981" strokeWidth="0.2" />
-                        <circle cx="400" cy="400" r="250" fill="none" stroke="#10b981" strokeWidth="0.1" />
-                    </svg>
-                </div>
             </div>
 
-            {/* RIGHT SIDE: Auth Form */}
-            <div className="w-full lg:w-2/5 flex items-center justify-center p-8 relative">
-                <motion.div
-                    className="w-full max-w-[420px] relative z-20"
-                    initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}
-                >
-                    <div className="bg-white/95 backdrop-blur-3xl shadow-[0_32px_64px_rgba(0,0,0,0.5)] rounded-[48px] p-10 sm:p-14 border border-white relative overflow-hidden">
-                        {/* Glow accent */}
-                        <div className="absolute -top-32 -right-32 w-64 h-64 bg-[#10b981]/20 rounded-full blur-[80px] pointer-events-none" />
+            <div className="w-full lg:w-2/5 flex items-center justify-center p-8 relative overflow-y-auto custom-scrollbar">
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-[40px] p-10 md:p-14 shadow-2xl relative overflow-hidden group hover:border-[#10b981]/30 transition-colors">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-[#10b981]/5 rounded-full blur-[80px] group-hover:bg-[#10b981]/10 transition-colors" />
 
-                        <div className="relative z-10 mb-12">
-                            <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Welcome.</h2>
-                            <p className="text-slate-500 font-bold text-sm mt-3 uppercase tracking-widest">Authentication Required</p>
+                        <div className="relative z-10 mb-10 pb-6 border-b border-white/10">
+                            <h2 className="text-3xl font-black text-white italic tracking-tighter">Login</h2>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Access your dashboard</p>
                         </div>
 
-                        {!isForgotMode ? (
-                            <form className="space-y-8 relative z-10" onSubmit={handleLogin}>
-                                {error && (
-                                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400 text-xs font-black uppercase tracking-wider flex items-center gap-3">
-                                        <AlertTriangle size={16} /> {error}
-                                    </motion.div>
-                                )}
-
-                                <div className="space-y-6">
-                                    <div className="group">
-                                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pl-1 group-focus-within:text-[#10b981] transition-colors">Email Address</label>
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-[#10b981] transition-colors">
-                                                <UserCircle size={20} />
-                                            </div>
-                                            <input
-                                                type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@domain.com"
-                                                className="w-full pl-14 pr-6 py-5 rounded-[24px] bg-white border border-slate-200 focus:border-[#10b981]/50 outline-none transition-all text-sm font-bold text-slate-900 shadow-sm placeholder:text-slate-300"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="group">
-                                        <div className="flex justify-between items-center mb-3">
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 group-focus-within:text-[#10b981] transition-colors">Password</label>
-                                            <button type="button" onClick={() => setIsForgotMode(true)} className="text-[10px] font-black text-[#10b981] hover:text-[#34d399] uppercase tracking-widest transition-colors">Forgot Password?</button>
-                                        </div>
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-[#10b981] transition-colors">
-                                                <Shield size={20} />
-                                            </div>
-                                            <input
-                                                type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••"
-                                                className="w-full pl-14 pr-12 py-5 rounded-[24px] bg-white border border-slate-200 focus:border-[#10b981]/50 outline-none transition-all text-sm font-bold text-slate-900 shadow-sm placeholder:text-slate-300"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword(!showPassword)}
-                                                className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
-                                            >
-                                                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 flex flex-col gap-4">
-                                    <button
-                                        type="submit" disabled={isLoading}
-                                        className="w-full bg-[#10b981] hover:bg-[#34d399] text-black font-black py-5 rounded-[24px] shadow-[0_20px_40px_rgba(16,185,129,0.2)] hover:-translate-y-1 active:translate-y-0 transition-all text-sm uppercase tracking-[0.2em] flex justify-center items-center gap-3 disabled:opacity-50 disabled:translate-y-0"
-                                    >
-                                        {isLoading ? <RefreshCcw className="animate-spin" size={18} /> : 'Log In'}
-                                        {!isLoading && <ArrowRight size={18} />}
-                                    </button>
-
-                                    <button
-                                        type="button" onClick={(e) => handleLogin(e, 'ADMIN')}
-                                        className="w-full bg-white/5 hover:bg-white/10 text-white font-black py-5 rounded-[24px] border border-white/10 transition-all text-[10px] uppercase tracking-[0.2em] flex justify-center items-center gap-2"
-                                    >
-                                        <Shield size={14} /> Admin Login
-                                    </button>
-                                </div>
-                            </form>
-                        ) : (
-                            <form className="space-y-8 relative z-10" onSubmit={(e) => { e.preventDefault(); setIsForgotMode(false); }}>
-                                <div className="p-6 bg-[#10b981]/5 border border-[#10b981]/10 rounded-[32px]">
-                                    <p className="text-slate-400 text-xs leading-relaxed text-center font-bold">
-                                        Submit your registered identifier to receive a temporary decryption key.
-                                    </p>
-                                </div>
-                                <div className="group">
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 pl-1">Email Address</label>
-                                    <input
-                                        type="email" required placeholder="name@domain.com"
-                                        className="w-full px-6 py-5 rounded-[24px] bg-black border border-white/5 focus:border-[#10b981]/50 outline-none transition-all text-sm font-bold text-white"
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-4 pt-4">
-                                    <button className="w-full bg-white text-black font-black py-5 rounded-[24px] uppercase tracking-widest text-xs hover:bg-slate-200 transition-all">Send Recovery</button>
-                                    <button onClick={() => setIsForgotMode(false)} className="w-full text-slate-500 font-black text-[10px] py-2 hover:text-white uppercase tracking-widest transition-colors">Back to Login</button>
-                                </div>
-                            </form>
+                        {error && (
+                            <div className="mb-8 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-4 text-rose-500 animate-in slide-in-from-top-2">
+                                <AlertCircle size={20} />
+                                <span className="text-xs font-black uppercase tracking-widest">{error}</span>
+                            </div>
                         )}
 
-                        <div className="mt-14 text-center relative z-10">
-                            <span className="text-slate-600 text-[10px] font-black uppercase tracking-widest">
-                                Don't have an account?
-                                <button onClick={() => navigate('/register')} className="text-[#10b981] hover:text-[#34d399] font-black ml-2 underline underline-offset-8 decoration-[#10b981]/30">Register Here</button>
-                            </span>
-                        </div>
-                    </div>
-                </motion.div>
-            </div>
-        </div>
-    );
-};
-
-const RegistrationPage = ({ onLogin }) => {
-    const navigate = useNavigate();
-    const [firstName, setFirstName] = useState('');
-    const [lastName, setLastName] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [vehicles, setVehicles] = useState([{ imei: '', vehicleName: '', plateNumber: '', sim: '', error: false }]);
-    const [loading, setLoading] = useState(false);
-    const [showPassword, setShowPassword] = useState(false);
-
-    const handleImeiCheck = async (index, val) => {
-        const newVehicles = [...vehicles];
-        newVehicles[index].imei = val;
-
-        if (val.length === 15) {
-            try {
-                const res = await fetch(`${API_BASE}/api/inventory/check?imei=${val}`);
-                const data = await res.json();
-                if (data.status === 'SUCCESS') {
-                    newVehicles[index].sim = data.sim;
-                    newVehicles[index].error = false;
-                } else {
-                    newVehicles[index].sim = '';
-                    newVehicles[index].error = true;
-                }
-            } catch (err) {
-                newVehicles[index].error = true;
-            }
-        } else {
-            newVehicles[index].error = false;
-            newVehicles[index].sim = '';
-        }
-        setVehicles(newVehicles);
-    };
-
-    const updateVehicleField = (index, field, val) => {
-        const newVehicles = [...vehicles];
-        newVehicles[index][field] = val;
-        setVehicles(newVehicles);
-    };
-
-    const addVehicleRow = () => {
-        setVehicles([...vehicles, { imei: '', vehicleName: '', plateNumber: '', sim: '', error: false }]);
-    };
-
-    const removeVehicleRow = (index) => {
-        if (vehicles.length > 1) {
-            setVehicles(vehicles.filter((_, i) => i !== index));
-        }
-    };
-
-    const handleRegister = async () => {
-        setLoading(true);
-        // Simulate registration for now as per demo flow
-        setTimeout(() => {
-            if (onLogin) onLogin({ role: 'CLIENT', name: `${firstName} ${lastName}`, email });
-            navigate('/client');
-            setLoading(false);
-        }, 1500);
-    };
-
-    return (
-        <div className="min-h-screen flex bg-black font-sans selection:bg-[#10b981] selection:text-black py-12 px-6 overflow-x-hidden relative">
-            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[#10b981]/5 rounded-full blur-[120px] -z-0 translate-x-1/2 -translate-y-1/2" />
-
-            <div className="max-w-[1240px] mx-auto w-full flex flex-col items-center relative z-10">
-                <div className="mb-16 flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-                    <div className="bg-[#10b981] p-2 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform">
-                        <MapIcon className="text-black" size={24} />
-                    </div>
-                    <span className="font-black text-2xl text-white tracking-tighter">GEOSURE<span className="text-[#10b981]">PATH.</span></span>
-                </div>
-
-                <motion.div className="w-full max-w-3xl" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                    <div className="bg-white/95 backdrop-blur-3xl shadow-2xl rounded-[48px] p-10 sm:p-14 border border-white">
-                        <div className="text-center mb-10">
-                            <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Create Account</h2>
-                            <p className="text-slate-500 font-bold text-sm mt-2 uppercase tracking-widest">Multi-Device Fleet Setup</p>
-                        </div>
-
-                        <form className="space-y-8" onSubmit={(e) => { e.preventDefault(); handleRegister(); }}>
-                            {/* Section 01: Personal */}
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <input type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} required className="px-6 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10b981] outline-none font-bold text-slate-900" />
-                                    <input type="text" placeholder="Last Name" value={lastName} onChange={e => setLastName(e.target.value)} required className="px-6 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10b981] outline-none font-bold text-slate-900" />
-                                </div>
-                                <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} required className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10b981] outline-none font-bold text-slate-900" />
-                                <div className="relative">
-                                    <input
-                                        type={showPassword ? "text" : "password"}
-                                        placeholder="Password"
-                                        value={password}
-                                        onChange={e => setPassword(e.target.value)}
-                                        required
-                                        className="w-full px-6 py-4 pr-12 rounded-2xl bg-slate-50 border border-slate-200 focus:border-[#10b981] outline-none font-bold text-slate-900"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute inset-y-0 right-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
-                                    >
-                                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Section 02: Devices */}
-                            <div className="space-y-6">
-                                <div className="flex justify-between items-center text-slate-500">
-                                    <span className="text-[10px] font-black uppercase tracking-widest">Devices ({vehicles.length})</span>
-                                    <button type="button" onClick={addVehicleRow} className="text-[10px] font-black text-[#10b981] uppercase tracking-widest flex items-center gap-1"><Plus size={14} /> Add Device</button>
-                                </div>
-
-                                {vehicles.map((v, i) => (
-                                    <div key={i} className="bg-slate-50 p-6 rounded-3xl border border-slate-200 relative">
-                                        {vehicles.length > 1 && <button type="button" onClick={() => removeVehicleRow(i)} className="absolute top-4 right-4 text-slate-400"><X size={16} /></button>}
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <input type="text" value={v.imei} onChange={e => handleImeiCheck(i, e.target.value)} placeholder="IMEI" required maxLength={15} className="px-4 py-3 rounded-xl border border-slate-200 text-sm font-mono text-slate-900" />
-                                            <input type="text" value={v.vehicleName} onChange={e => updateVehicleField(i, 'vehicleName', e.target.value)} placeholder="Vehicle Name" required className="px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-900" />
-                                            <div className="flex gap-2">
-                                                <select value={v.iconType} onChange={e => updateVehicleField(i, 'iconType', e.target.value)} className="flex-1 px-3 py-3 rounded-xl border border-slate-200 text-sm text-slate-900">
-                                                    {VEHICLE_ICON_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.emoji} {opt.label}</option>)}
-                                                </select>
-                                                <div className="flex items-center gap-1 mr-2">
-                                                    {PIN_COLOR_OPTIONS.slice(0, 3).map(c => (
-                                                        <button key={c.id} type="button" onClick={() => updateVehicleField(i, 'color', c.id)} className={`w-4 h-4 rounded-full border ${v.color === c.id ? 'ring-2 ring-slate-800' : ''}`} style={{ backgroundColor: c.id }} />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
+                        <form onSubmit={handleLogin} className="space-y-8 relative z-10">
+                            <div className="space-y-5">
+                                <div className="group">
+                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Email Address</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><UserCircle size={16} /></div>
+                                        <input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. admin@domain.com" className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
                                     </div>
-                                ))}
+                                </div>
+
+                                <div className="group">
+                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Password</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><Shield size={16} /></div>
+                                        <input required type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter Password" className="w-full pl-12 pr-12 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-[#10b981] transition-colors">
+                                            {showPassword ? <MapIcon size={16} /> : <Zap size={16} />}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
-                            <button type="submit" disabled={loading} className="w-full bg-[#10b981] hover:bg-[#34d399] text-black font-black py-5 rounded-2xl shadow-xl transition-all uppercase tracking-widest flex justify-center items-center gap-2">
-                                {loading ? <RefreshCcw className="animate-spin" size={20} /> : 'Create Account'}
-                                {!loading && <ArrowRight size={20} />}
+                            <button disabled={isLoading} type="submit" className="w-full bg-[#10b981] hover:bg-[#059669] text-black py-5 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] active:scale-95 flex items-center justify-center gap-3">
+                                {isLoading ? <><RefreshCcw size={16} className="animate-spin" /> Logging in...</> : <>Login <ArrowRight size={16} /></>}
                             </button>
+
+                            <div className="pt-6 border-t border-white/10 flex flex-col items-center gap-4">
+                                <button type="button" onClick={() => navigate('/register')} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors">
+                                    Create an Account?
+                                </button>
+                                <button type="button" onClick={(e) => handleLogin(e, 'ADMIN')} className="px-6 py-2 bg-rose-500/10 text-rose-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all">
+                                    Force Admin Login
+                                </button>
+                            </div>
                         </form>
                     </div>
                 </motion.div>
@@ -1284,8 +1010,197 @@ const RegistrationPage = ({ onLogin }) => {
     );
 };
 
-// --- LAYOUTS ---
+const RegistrationPage = () => {
+    const navigate = useNavigate();
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [mobile, setMobile] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [vehicles, setVehicles] = useState([{ imei: '', name: '', plate: '' }]);
+    const [error, setError] = useState('');
 
+    const handleRegister = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        // Validation
+        const mobileRegex = /^[0-9]{10}$/;
+        if (!mobileRegex.test(mobile)) {
+            setError('Contact Number must be exactly 10 digits.');
+            return;
+        }
+
+        if (vehicles.some(v => v.imei.length !== 15 || !/^[0-9]{15}$/.test(v.imei))) {
+            setError('All Hardware UUIDs (IMEI) must be exactly 15 digits.');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const req = await fetch(`${API_BASE}/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password, mobile, vehicles }) });
+            if ((await req.json()).status === 'SUCCESS') navigate('/login');
+            else setError('Registration Sequence Failed.');
+        } catch { setError('Network Synchronization Error.'); }
+        finally { setIsLoading(false); }
+    };
+
+    return (
+        <div className="min-h-screen flex bg-black font-sans selection:bg-[#10b981] selection:text-black overflow-hidden relative">
+            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#10b981]/5 rounded-full blur-[120px] pointer-events-none" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#0ea5e9]/5 rounded-full blur-[100px] pointer-events-none" />
+
+            <div className="hidden lg:flex lg:w-2/5 relative flex-col justify-between p-16 overflow-hidden border-r border-white/5">
+                <div className="relative z-10 flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+                    <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform bg-black/30 border border-[#10b981]/30 flex items-center justify-center">
+                        <MapIcon className="text-[#10b981]" size={24} />
+                    </div>
+                    <span className="font-black text-2xl text-white tracking-tighter uppercase italic">GEOSURE<span className="text-[#10b981]">PATH</span></span>
+                </div>
+
+                <div className="relative z-10">
+                    <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 1 }}>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#10b981]/10 border border-[#10b981]/20 text-[#10b981] text-[10px] font-black uppercase tracking-[0.2em] mb-8">
+                            <Zap size={12} className="fill-current" /> Register Account
+                        </div>
+                        <h1 className="text-7xl font-black text-white leading-[0.9] tracking-tighter mb-8 italic">
+                            Create <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10b981] to-[#34d399]">Account.</span>
+                        </h1>
+                        <p className="text-slate-500 text-lg max-w-md mb-12 leading-relaxed font-black uppercase tracking-tight">
+                            Sign up to track your vehicles and manage your assets in real-time.
+                        </p>
+                    </motion.div>
+                </div>
+
+                <div className="relative z-10 flex items-center gap-6 text-slate-600 text-[10px] font-black uppercase tracking-widest">
+                    <span>&copy; {new Date().getFullYear()} CORE OS</span>
+                    <button className="hover:text-[#10b981] transition-colors">Infrastructure</button>
+                    <button className="hover:text-[#10b981] transition-colors">Security</button>
+                </div>
+            </div>
+
+            <div className="w-full lg:w-3/5 flex items-center justify-center p-8 relative overflow-y-auto custom-scrollbar">
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-3xl">
+                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-[40px] p-10 md:p-14 shadow-2xl relative overflow-hidden group hover:border-[#10b981]/30 transition-colors">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-[#10b981]/5 rounded-full blur-[80px] group-hover:bg-[#10b981]/10 transition-colors" />
+
+                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center mb-10 pb-6 border-b border-white/10 gap-6">
+                            <div>
+                                <h2 className="text-3xl font-black text-white italic tracking-tighter">Create Account</h2>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Enter your details to register</p>
+                            </div>
+                            <button onClick={() => navigate('/login')} className="px-6 py-3 bg-white/5 text-white border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-white/10 hover:border-white/20 active:scale-95">
+                                Login Instead
+                            </button>
+                        </div>
+
+                        {error && (
+                            <div className="mb-8 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-4 text-rose-500 animate-in slide-in-from-top-2">
+                                <AlertCircle size={20} />
+                                <span className="text-xs font-black uppercase tracking-widest">{error}</span>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleRegister} className="space-y-10 relative z-10">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-6">
+                                    <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em] border-l-2 border-[#10b981] pl-3">Account Details</h3>
+                                    <div className="space-y-5">
+                                        {[
+                                            { l: 'Full Name', v: name, s: setName, i: UserCircle, t: 'text', p: 'e.g. John Doe' },
+                                            { l: 'Email Address', v: email, s: setEmail, i: MapIcon, t: 'email', p: 'e.g. user@domain.com' },
+                                            { l: 'Mobile Number', v: mobile, s: setMobile, i: Smartphone, t: 'tel', p: '10-Digit Mobile Number' },
+                                            { l: 'Password', v: password, s: setPassword, i: Shield, t: 'password', p: 'Strong Password' }
+                                        ].map((f, i) => (
+                                            <div key={i} className="group">
+                                                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">{f.l}</label>
+                                                <div className="relative">
+                                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><f.i size={16} /></div>
+                                                    <input required type={f.t} value={f.v} onChange={e => f.s(e.target.value)} placeholder={f.p} className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em] border-l-2 border-[#10b981] pl-3">GPS Devices</h3>
+                                        <button type="button" onClick={() => setVehicles([...vehicles, { imei: '', name: '', plate: '' }])} className="w-8 h-8 flex items-center justify-center bg-white/5 border border-white/10 rounded-lg text-white hover:bg-[#10b981]/20 hover:text-[#10b981] hover:border-[#10b981]/30 transition-colors shadow-sm">
+                                            <Plus size={14} />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-4 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
+                                        {vehicles.map((v, i) => (
+                                            <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 relative group">
+                                                <input required maxLength={15} value={v.imei} onChange={e => { const n = [...vehicles]; n[i].imei = e.target.value; setVehicles(n); }} placeholder="15 Digit IMEI" className="w-full px-5 py-3 rounded-xl border border-slate-200 mb-3 text-xs font-black" />
+                                                <div className="flex gap-3">
+                                                    <input required value={v.name} onChange={e => { const n = [...vehicles]; n[i].name = e.target.value; setVehicles(n); }} placeholder="Asset Name" className="w-1/2 px-5 py-3 rounded-xl border border-slate-200 text-xs font-black" />
+                                                    <input required value={v.plate} onChange={e => { const n = [...vehicles]; n[i].plate = e.target.value; setVehicles(n); }} placeholder="Plate ID" className="w-1/2 px-5 py-3 rounded-xl border border-slate-200 text-xs font-black" />
+                                                </div>
+                                                {vehicles.length > 1 && <button type="button" onClick={() => setVehicles(vehicles.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-rose-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={12} /></button>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="pt-10 flex flex-col items-center">
+                                {error && <div className="mb-6 p-4 bg-rose-50 rounded-2xl text-rose-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-3"><AlertTriangle size={14} /> {error}</div>}
+                                <button type="submit" disabled={isLoading} className="w-full max-w-md bg-[#10b981] text-black font-black py-6 rounded-3xl shadow-2xl hover:-translate-y-1 active:scale-95 transition-all text-sm uppercase tracking-[0.3em] flex justify-center items-center gap-4">Register Account <ArrowRight size={20} /></button>
+                            </div>
+                        </form>
+                    </div>
+                </motion.div>
+            </div>
+        </div>
+    );
+};
+const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
+    const [points, setPoints] = useState([]);
+
+    useMapEvents({
+        click(e) {
+            if (!drawMode) return;
+            const newPoints = [...points, e.latlng];
+
+            if (drawMode === 'circle' && newPoints.length === 2) {
+                const radius = newPoints[0].distanceTo(newPoints[1]);
+                onComplete({ type: 'CIRCLE', center: newPoints[0], radius });
+                setPoints([]);
+            } else if (drawMode === 'rectangle' && newPoints.length === 2) {
+                onComplete({ type: 'POLYGON', bounds: [newPoints[0], newPoints[1]] });
+                setPoints([]);
+            } else {
+                setPoints(newPoints);
+            }
+        },
+        dblclick() {
+            if (drawMode === 'polygon' && points.length >= 3) {
+                onComplete({ type: 'POLYGON', points });
+                setPoints([]);
+            } else if (drawMode === 'route' && points.length >= 2) {
+                onComplete({ type: 'ROUTE', points });
+                setPoints([]);
+            }
+        }
+    });
+
+    if (!drawMode || points.length === 0) return null;
+
+    return (
+        <React.Fragment>
+            {points.map((p, i) => (
+                <Circle key={i} center={p} radius={5} pathOptions={{ color: '#ef4444' }} />
+            ))}
+            {drawMode === 'polygon' && points.length > 1 && (
+                <Polyline positions={points} pathOptions={{ color: '#ef4444', dashArray: '5,5' }} />
+            )}
+            {drawMode === 'route' && points.length > 1 && (
+                <Polyline positions={points} pathOptions={{ color: '#f59e0b', weight: 4 }} />
+            )}
+        </React.Fragment>
+    );
+};
 const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) => {
     const [selectedVehicle, setSelectedVehicle] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1321,16 +1236,24 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
             setTimeout(() => setCurrentAlert(null), 6000);
         });
 
-        // Generate one mock alert on load for visual testing
+        // Generate mock alerts on load for visual testing
         if (alertHistory.length === 0) {
-            const mockAlert = {
-                type: 'GEOFENCE_ENTER',
-                imei: '869727079043558',
-                vehicleName: 'Demo Truck (869727079043558)',
-                fenceName: 'Main Campus',
-                timestamp: new Date().toISOString()
-            };
-            setAlertHistory([mockAlert]);
+            setAlertHistory([
+                {
+                    type: 'GEOFENCE_ENTER',
+                    imei: '869727079043558',
+                    vehicleName: 'Demo Truck (869727079043558)',
+                    fenceName: 'Main Campus',
+                    timestamp: new Date().toISOString()
+                },
+                {
+                    type: 'ROUTE_DEVIATION',
+                    imei: '869727079043556',
+                    vehicleName: 'Active Van (869727079043556)',
+                    fenceName: 'Delivery Route A',
+                    timestamp: new Date(Date.now() - 300000).toISOString()
+                }
+            ]);
         }
 
         return () => socket.disconnect();
@@ -1349,6 +1272,43 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
     const [pinError, setPinError] = useState('');
     const [commandLoading, setCommandLoading] = useState(false);
     const [showIconPicker, setShowIconPicker] = useState(false);
+
+    // --- Geofence Draw State ---
+    const [drawMode, setDrawMode] = useState(null); // 'circle', 'rectangle', 'polygon', null
+
+    const handleGeofenceComplete = (drawnData) => {
+        const name = prompt("Enter a name for this Geofence:");
+        if (!name) {
+            setDrawMode(null);
+            return;
+        }
+
+        let formattedCoords;
+        if (drawnData.type === 'CIRCLE') {
+            formattedCoords = [drawnData.center.lat, drawnData.center.lng, drawnData.radius];
+        } else if (drawnData.type === 'POLYGON' && drawnData.bounds) {
+            formattedCoords = [
+                [drawnData.bounds[0].lat, drawnData.bounds[0].lng],
+                [drawnData.bounds[1].lat, drawnData.bounds[1].lng],
+            ];
+        } else if (drawnData.type === 'POLYGON' && drawnData.points) {
+            formattedCoords = drawnData.points.map(p => [p.lat, p.lng]);
+        } else if (drawnData.type === 'ROUTE' && drawnData.points) {
+            formattedCoords = drawnData.points.map(p => [p.lat, p.lng]);
+        }
+
+        const newGeofence = {
+            id: Date.now(),
+            name,
+            fence_type: drawnData.type,
+            coordinates: formattedCoords
+        };
+
+        setGeofences(prev => [...prev, newGeofence]);
+        setDrawMode(null);
+        alert(`Geofence '${name}' created and saved!`);
+        // Normally you'd sync to backend here
+    };
 
     // (Using user from props)
     const [historyRange, setHistoryRange] = useState({
@@ -1435,8 +1395,16 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
         }
 
         if (user?.isDemo) {
-            setPinError('SIMULATION: Command Dispatch Blocked.');
-            setTimeout(() => setShowPinModal(false), 2000);
+            setCommandLoading(true);
+            setTimeout(() => {
+                setShowPinModal(false);
+                setPinCode('');
+                const commandToRun = selectedVehicle.ignition ? 'CUT_ENGINE' : 'RESTORE_ENGINE';
+                alert(`SIMULATION SUCCESS: Command ${commandToRun} Dispatched.`);
+                setSelectedVehicle(prev => ({ ...prev, ignition: !prev.ignition }));
+                setFleet(prev => prev.map(fv => fv.id === selectedVehicle.id ? { ...fv, ignition: !fv.ignition } : fv));
+                setCommandLoading(false);
+            }, 1000);
             return;
         }
 
@@ -1473,7 +1441,7 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
 
     return (
         <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden font-sans text-slate-800 bg-[#e4e5e6] relative">
-            {/* Left Side Panel - TRACKZEE LIGHT THEME */}
+            {/* Left Side Panel - GEOSUREPATH LIGHT THEME */}
             <aside className="w-[340px] border-r border-slate-200 bg-white flex flex-col shrink-0 z-[100] shadow-md">
                 {/* Search Bar */}
                 <div className="p-3 border-b border-slate-200 bg-slate-50">
@@ -1546,23 +1514,23 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                                 <div className="space-y-3 pb-20">
                                     {alertHistory.map((alert, idx) => {
                                         const isExit = alert.type === 'GEOFENCE_EXIT';
+                                        const isDeviation = alert.type === 'ROUTE_DEVIATION';
                                         return (
                                             <motion.div
                                                 initial={{ opacity: 0, x: -10 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 key={idx}
-                                                className={`p-3 rounded-xl border shadow-sm transition-all hover:shadow-md ${isExit ? 'bg-rose-50/50 border-rose-100' : 'bg-blue-50/50 border-blue-100'
-                                                    }`}
+                                                className={`p-3 rounded-xl border shadow-sm transition-all hover:shadow-md ${isExit ? 'bg-rose-50/50 border-rose-100' : isDeviation ? 'bg-amber-50/50 border-amber-100' : 'bg-blue-50/50 border-blue-100'}`}
                                             >
                                                 <div className="flex items-center gap-2 mb-1">
-                                                    <div className={`w-2 h-2 rounded-full ${isExit ? 'bg-rose-500 animate-pulse' : 'bg-blue-500 animate-pulse'}`} />
-                                                    <span className={`text-[10px] font-black uppercase tracking-wider ${isExit ? 'text-rose-600' : 'text-blue-600'}`}>
-                                                        {isExit ? 'Boundary Exit' : 'Boundary Entry'}
+                                                    <div className={`w-2 h-2 rounded-full ${isExit ? 'bg-rose-500 animate-pulse' : isDeviation ? 'bg-amber-500 animate-pulse' : 'bg-blue-500 animate-pulse'}`} />
+                                                    <span className={`text-[10px] font-black uppercase tracking-wider ${isExit ? 'text-rose-600' : isDeviation ? 'text-amber-600' : 'text-blue-600'}`}>
+                                                        {isExit ? 'Boundary Exit' : isDeviation ? 'Route Deviation' : 'Boundary Entry'}
                                                     </span>
                                                 </div>
                                                 <div className="font-bold text-slate-800 text-sm">{alert.vehicleName}</div>
                                                 <div className="text-xs text-slate-500 mt-1">
-                                                    {isExit ? 'Left' : 'Entered'} geofence <span className="font-bold text-slate-700">{alert.fenceName}</span>
+                                                    {isExit ? 'Left' : isDeviation ? 'Deviated via 100m from' : 'Entered'} geofence <span className="font-bold text-slate-700">{alert.fenceName}</span>
                                                 </div>
                                                 <div className="mt-2 flex justify-between items-center text-[9px] font-black uppercase text-slate-400 tracking-tighter">
                                                     <span>{new Date(alert.timestamp).toLocaleTimeString()}</span>
@@ -1578,12 +1546,80 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
 
                     {/* Geofences tab content */}
                     {activeTab === 'Geofences' && (
-                        <div className="p-4">
-                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Geofence Zones</div>
-                            <div className="text-center py-8">
-                                <MapPin className="mx-auto mb-3 text-slate-300" size={32} />
-                                <div className="text-sm font-semibold text-slate-500">No Geofences Configured</div>
-                                <div className="text-xs text-slate-400 mt-1">Geofence management requires backend connection.</div>
+                        <div className="p-4 h-full flex flex-col">
+                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3 flex justify-between items-center">
+                                <span>Geofence Zones</span>
+                                {drawMode && <span className="text-blue-500 animate-pulse text-[10px]">Drawing...</span>}
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-2 mb-4 shrink-0">
+                                <button
+                                    onClick={() => setDrawMode(drawMode === 'circle' ? null : 'circle')}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'circle' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <div className="w-5 h-5 rounded-full border-2 border-current border-dashed"></div>
+                                    Circle
+                                </button>
+                                <button
+                                    onClick={() => setDrawMode(drawMode === 'rectangle' ? null : 'rectangle')}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'rectangle' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <div className="w-6 h-5 border-2 border-current border-dashed"></div>
+                                    Rect
+                                </button>
+                                <button
+                                    onClick={() => setDrawMode(drawMode === 'polygon' ? null : 'polygon')}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'polygon' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <Hexagon size={16} className="text-current" />
+                                    Poly
+                                </button>
+                                <button
+                                    onClick={() => setDrawMode(drawMode === 'route' ? null : 'route')}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'route' ? 'bg-amber-50 border-amber-400 text-amber-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    <RouteIcon size={16} className="text-current" />
+                                    Route
+                                </button>
+                            </div>
+
+                            {drawMode && (
+                                <div className="text-[10px] bg-blue-50 text-blue-700 p-2 border border-blue-200 rounded mb-4 shrink-0">
+                                    <div className="font-bold">Instructions:</div>
+                                    {drawMode === 'circle' && 'Click center, then click outer edge to set radius.'}
+                                    {drawMode === 'rectangle' && 'Click one corner, then click opposite corner.'}
+                                    {drawMode === 'polygon' && 'Click points to draw shape. Double-click to close.'}
+                                    {drawMode === 'route' && 'Click points to draw a path. Double-click to close. Creates a 100m buffer zone.'}
+                                </div>
+                            )}
+
+                            <div className="flex-1 overflow-y-auto min-h-0 space-y-2 pb-20">
+                                {geofences.length === 0 ? (
+                                    <div className="text-center py-8">
+                                        <MapPin className="mx-auto mb-3 text-slate-300" size={32} />
+                                        <div className="text-sm font-semibold text-slate-500">No Geofences Configured</div>
+                                        <div className="text-xs text-slate-400 mt-1">Select a shape above to start drawing.</div>
+                                    </div>
+                                ) : (
+                                    geofences.map(gf => (
+                                        <div key={gf.id} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-8 h-8 rounded bg-blue-50 flex items-center justify-center text-blue-500"><Hexagon size={16} /></div>
+                                                <div>
+                                                    <div className="font-bold text-sm text-slate-700">{gf.name}</div>
+                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{gf.fence_type}</div>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => setGeofences(prev => prev.filter(g => g.id !== gf.id))}
+                                                className="text-slate-400 hover:text-red-500 p-1"
+                                                title="Delete Geofence"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     )}
@@ -1627,15 +1663,20 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                     </MarkerClusterGroup>
 
                     {/* Active Geofences Visualization */}
-                    {activeTab === 'Geofences' && geofences.map(gf => (
-                        gf.fence_type === 'CIRCLE' ? (
-                            <Marker
-                                key={gf.id}
-                                position={[gf.coordinates[0], gf.coordinates[1]]}
-                                icon={L.divIcon({ className: 'gf-circle', html: `<div style="width: ${gf.coordinates[2] * 2}px; height: ${gf.coordinates[2] * 2}px; border-radius: 50%; border: 2px dashed #3b82f6; background: rgba(59,130,246,0.1);"></div>`, iconSize: [gf.coordinates[2] * 2, gf.coordinates[2] * 2] })}
-                            />
-                        ) : null
-                    ))}
+                    {activeTab === 'Geofences' && geofences.map(gf => {
+                        if (gf.fence_type === 'CIRCLE') {
+                            return <Circle key={gf.id} center={[gf.coordinates[0], gf.coordinates[1]]} radius={gf.coordinates[2]} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 }} />;
+                        } else if (gf.fence_type === 'rectangle' || (gf.fence_type === 'POLYGON' && gf.coordinates.length === 2)) {
+                            return <Rectangle key={gf.id} bounds={gf.coordinates} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 }} />;
+                        } else if (gf.fence_type === 'polygon' || (gf.fence_type === 'POLYGON' && gf.coordinates.length > 2)) {
+                            return <Polygon key={gf.id} positions={gf.coordinates} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 }} />;
+                        } else if (gf.fence_type === 'ROUTE') {
+                            return <Polyline key={gf.id} positions={gf.coordinates} pathOptions={{ color: '#f59e0b', weight: 40, opacity: 0.3 }} />;
+                        }
+                        return null;
+                    })}
+
+                    <GeofenceDrawerLayer drawMode={drawMode} onComplete={handleGeofenceComplete} />
 
                     {routeHistory.length > 1 && !historyMode && (
                         <Polyline positions={routeHistory} pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }} />
@@ -1670,14 +1711,14 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                                 }`}>
                                 <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-lg animate-bounce">
                                     <span className="text-4xl">
-                                        {currentAlert.type === 'GEOFENCE_EXIT' ? '🚪' : '📍'}
+                                        {currentAlert.type === 'GEOFENCE_EXIT' ? '🚪' : currentAlert.type === 'ROUTE_DEVIATION' ? '🛣️' : '📍'}
                                     </span>
                                 </div>
                                 <div className="text-center text-white">
                                     <div className="text-[10px] font-black uppercase tracking-[0.3em] opacity-80 mb-1">Critical Event Captured</div>
                                     <h3 className="text-2xl font-black tracking-tight">{currentAlert.vehicleName}</h3>
                                     <p className="text-sm font-bold opacity-90 mt-1">
-                                        {currentAlert.type === 'GEOFENCE_EXIT' ? 'Exited Geofence Boundary' : 'Entered Restricted Geofence'}
+                                        {currentAlert.type === 'GEOFENCE_EXIT' ? 'Exited Boundary' : currentAlert.type === 'ROUTE_DEVIATION' ? 'Deviation from assigned route detected!' : 'Entered Restricted Boundary'}
                                     </p>
                                     <div className="mt-2 text-[10px] font-mono opacity-60">
                                         IMEI: {currentAlert.imei} | {new Date().toLocaleTimeString()}
@@ -1688,7 +1729,7 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                     )}
                 </AnimatePresence>
 
-                {/* Floating Info Panel - TRACKZEE THEME */}
+                {/* Floating Info Panel - GEOSUREPATH THEME */}
                 {selectedVehicle && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -1723,12 +1764,38 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                                                 {selectedVehicle.ignition ? <span className="text-green-600">ON</span> : <span className="text-slate-500">OFF</span>}
                                             </td>
                                         </tr>
-                                        <tr>
+                                        <tr className="border-b border-slate-100">
                                             <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><MapPin size={14} /> Location</td>
                                             <td className="p-2 text-xs text-slate-600">
                                                 {Number(selectedVehicle.lat).toFixed(5)}, {Number(selectedVehicle.lng).toFixed(5)}
                                             </td>
                                         </tr>
+                                        <tr className="border-b border-slate-100">
+                                            <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><Smartphone size={14} /> Mobile</td>
+                                            <td className="p-2 text-xs font-semibold text-slate-700">{selectedVehicle.phone || 'N/A'}</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><Hash size={14} /> IMEI</td>
+                                            <td className="p-2 text-xs font-mono text-slate-500">{selectedVehicle.id}</td>
+                                        </tr>
+                                        {selectedVehicle.fuel !== undefined && (
+                                            <tr className="border-t border-slate-100">
+                                                <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium">⛽ Fuel</td>
+                                                <td className="p-2 text-xs font-semibold text-emerald-600">{selectedVehicle.fuel}{selectedVehicle.fuel <= 100 ? '%' : ' L'}</td>
+                                            </tr>
+                                        )}
+                                        {selectedVehicle.battery !== undefined && (
+                                            <tr className="border-t border-slate-100">
+                                                <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium">🔋 Battery</td>
+                                                <td className="p-2 text-xs font-semibold text-amber-600">{selectedVehicle.battery}V</td>
+                                            </tr>
+                                        )}
+                                        {selectedVehicle.temp !== undefined && (
+                                            <tr className="border-t border-slate-100">
+                                                <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium">🌡️ Temp</td>
+                                                <td className="p-2 text-xs font-semibold text-blue-600">{selectedVehicle.temp}°C</td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -1783,6 +1850,7 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                                                             onClick={() => {
                                                                 setVehicleIconPref(selectedVehicle.id, opt.id);
                                                                 setSelectedVehicle(prev => ({ ...prev, iconType: opt.id }));
+                                                                setFleet(prev => prev.map(fv => fv.id === selectedVehicle.id ? { ...fv, iconType: opt.id } : fv));
                                                             }}
                                                             className={`flex flex-col items-center py-1.5 px-1 rounded-lg border transition-all text-center ${isActive
                                                                 ? 'bg-blue-50 border-blue-400 shadow-sm ring-1 ring-blue-300'
@@ -1809,6 +1877,7 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                                                                 onClick={() => {
                                                                     setVehicleColorPref(selectedVehicle.id, c.id);
                                                                     setSelectedVehicle(prev => ({ ...prev, color: c.id }));
+                                                                    setFleet(prev => prev.map(fv => fv.id === selectedVehicle.id ? { ...fv, color: c.id } : fv));
                                                                 }}
                                                                 className={`w-7 h-7 rounded-full border-2 transition-all hover:scale-110 ${isActive ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400 scale-110' : 'border-white shadow-sm'
                                                                     }`}
@@ -1851,14 +1920,28 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                                 {isPlaying ? <Pause size={16} /> : <Play size={16} />}
                             </button>
                             <div className="flex flex-col flex-1">
-                                <div className="flex justify-between text-xs text-slate-600 mb-1">
-                                    <span>{historyData[historyIndex] ? new Date(historyData[historyIndex].timestamp).toLocaleTimeString() : '--'}</span>
-                                    <span className="font-semibold">{historyData[historyIndex]?.speed || 0} km/h</span>
+                                <div className="flex justify-between items-center text-[10px] text-slate-600 mb-2">
+                                    <div className="flex flex-col">
+                                        <span className="font-black text-slate-900 uppercase tracking-tighter">
+                                            {historyData[historyIndex] ? new Date(historyData[historyIndex].timestamp).toLocaleTimeString() : '--:--:--'}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400 font-bold">
+                                            {historyData[historyIndex] ? new Date(historyData[historyIndex].timestamp).toLocaleDateString() : '--/--/--'}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <span className={`font-black text-[10px] px-2 py-0.5 rounded-full ${historyData[historyIndex]?.ignition === false ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                            {historyData[historyIndex]?.ignition === false ? 'STATIONARY' : 'ACTIVE'}
+                                        </span>
+                                        <span className="font-black text-blue-600 italic text-sm">
+                                            {Math.round(historyData[historyIndex]?.speed || 0)} <span className="text-[10px] not-italic text-slate-400">KM/H</span>
+                                        </span>
+                                    </div>
                                 </div>
                                 <input
                                     type="range" min="0" max={historyData.length - 1} value={historyIndex}
                                     onChange={(e) => setHistoryIndex(parseInt(e.target.value))}
-                                    className="w-full accent-blue-600"
+                                    className="w-full accent-blue-600 h-1.5"
                                 />
                             </div>
                             <select
@@ -1895,21 +1978,82 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                 {/* Command Modal */}
                 <AnimatePresence>
                     {showPinModal && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[999] bg-slate-900/50 flex flex-col items-center pt-[15vh]">
-                            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white p-6 rounded shadow-xl border border-slate-200 w-80">
-                                <h3 className="text-lg font-semibold text-slate-800 mb-2 border-b pb-2">Execute Command</h3>
-                                <p className="text-sm text-slate-600 mb-4">Enter secure pin to dispatch.</p>
-                                <form onSubmit={handleExecuteCommand}>
-                                    {pinError && <div className="text-red-500 text-xs mb-3">{pinError}</div>}
-                                    <input
-                                        type="password" maxLength="4" autoFocus
-                                        value={pinCode} onChange={(e) => setPinCode(e.target.value)}
-                                        className="w-full text-center tracking-[1em] p-2 border border-slate-300 rounded font-mono font-bold text-xl outline-none focus:border-blue-500 mb-4"
-                                    />
-                                    <div className="flex justify-end gap-2 text-sm">
-                                        <button type="button" onClick={() => setShowPinModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded">Cancel</button>
-                                        <button type="submit" disabled={commandLoading} className="px-4 py-2 bg-amber-500 text-white font-medium rounded hover:bg-amber-600 transition">
-                                            {commandLoading ? 'Sending...' : 'Send'}
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[999] bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center"
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+                                className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-[340px] overflow-hidden"
+                            >
+                                {/* Header */}
+                                <div className={`p-5 text-white flex items-center gap-3 ${selectedVehicle?.ignition ? 'bg-gradient-to-r from-red-600 to-rose-500' : 'bg-gradient-to-r from-emerald-600 to-green-500'
+                                    }`}>
+                                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl">
+                                        {selectedVehicle?.ignition ? '🔴' : '🟢'}
+                                    </div>
+                                    <div>
+                                        <div className="text-xs font-bold uppercase tracking-widest opacity-80">Secure Command</div>
+                                        <div className="text-base font-black">
+                                            {selectedVehicle?.ignition ? 'Engine Cut (Immobilize)' : 'Engine Restore (Activate)'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Vehicle info strip */}
+                                <div className="bg-slate-50 border-b border-slate-100 px-5 py-3 flex items-center gap-2">
+                                    <Car size={14} className="text-slate-400" />
+                                    <span className="text-xs font-semibold text-slate-600">{selectedVehicle?.name}</span>
+                                    <span className="ml-auto text-[10px] font-mono text-slate-400">{selectedVehicle?.id}</span>
+                                </div>
+
+                                {/* Form */}
+                                <form onSubmit={handleExecuteCommand} className="p-5 space-y-4">
+                                    <div className="text-sm text-slate-600 leading-relaxed">
+                                        This action will&nbsp;
+                                        <span className={`font-bold ${selectedVehicle?.ignition ? 'text-red-600' : 'text-emerald-600'
+                                            }`}>
+                                            {selectedVehicle?.ignition ? 'cut the engine and immobilize' : 'restore engine power to'}
+                                        </span>
+                                        &nbsp;the selected vehicle. Enter your 4-digit PIN to confirm.
+                                    </div>
+
+                                    {pinError && (
+                                        <div className="bg-red-50 border border-red-200 text-red-600 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-2">
+                                            <Shield size={12} /> {pinError}
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                            🔐 Enter PIN to Confirm
+                                        </label>
+                                        <input
+                                            type="password" maxLength="4" autoFocus
+                                            value={pinCode}
+                                            onChange={(e) => setPinCode(e.target.value)}
+                                            placeholder="••••"
+                                            className="w-full text-center tracking-[0.8em] py-3 px-4 border-2 border-slate-300 rounded-xl font-mono font-black text-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-slate-800 bg-slate-50"
+                                        />
+                                    </div>
+
+                                    <div className="flex gap-2 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPinModal(false)}
+                                            className="flex-1 px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold text-sm transition-colors border border-slate-200"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={commandLoading || pinCode.length < 4}
+                                            className={`flex-1 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider text-white transition-all disabled:opacity-50 ${selectedVehicle?.ignition
+                                                ? 'bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200'
+                                                : 'bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200'
+                                                }`}
+                                        >
+                                            {commandLoading ? '⏳ Sending...' : (selectedVehicle?.ignition ? '✂️ Cut Engine' : '✅ Restore Engine')}
                                         </button>
                                     </div>
                                 </form>
@@ -1934,7 +2078,7 @@ export default function App() {
 
     const [fleet, setFleet] = useState([]);
     const [theme, setTheme] = useState('dark');
-    const [mapTile, setMapTile] = useState('street');
+    const [mapTile, setMapTile] = useState('satellite');
     const [wsStatus, setWsStatus] = useState('disconnected');
 
     const handleLogin = (userData) => {
@@ -1966,16 +2110,29 @@ export default function App() {
 
                     const traccarFleet = devices.map(dev => {
                         const pos = positions.find(p => p.deviceId === dev.id) || {};
+                        const ignition = pos.attributes?.ignition || false;
+                        const speed = pos.speed ? Math.round(pos.speed * 1.852) : 0;
+                        let derivedStatus = 'offline';
+                        if (pos.id) {
+                            if (speed > 5 || pos.attributes?.motion) derivedStatus = 'moving';
+                            else if (ignition) derivedStatus = 'idle';
+                            else derivedStatus = 'stopped';
+                        }
+
                         return {
                             id: dev.uniqueId,
                             name: dev.name,
+                            phone: dev.phone || dev.contact || 'N/A',
                             type: dev.category || 'car',
-                            status: pos.id ? (pos.attributes?.motion ? 'moving' : 'idle') : 'offline',
-                            speed: pos.speed ? Math.round(pos.speed * 1.852) : 0,
+                            status: derivedStatus,
+                            speed: speed,
                             heading: pos.course || 0,
                             lat: typeof pos.latitude === 'number' ? pos.latitude : 21.0,
                             lng: typeof pos.longitude === 'number' ? pos.longitude : 79.0,
-                            ignition: pos.attributes?.ignition || false,
+                            ignition: ignition,
+                            fuel: pos.attributes?.fuel,
+                            battery: pos.attributes?.battery || pos.attributes?.batteryLevel,
+                            temp: pos.attributes?.temp1 || pos.attributes?.temperature,
                             lastUpdate: pos.deviceTime || Date.now()
                         };
                     });
@@ -1987,17 +2144,17 @@ export default function App() {
 
                 // Fallback to Demo Data for "Hassle-Free" experience
                 const demoFleet = [
-                    { id: '869727079043558', name: 'Live Tracker (869727079043558)', type: 'car', status: 'moving', speed: 45, lat: 21.1458, lng: 79.0882, ignition: true, color: '#10b981', lastUpdate: Date.now() },
-                    { id: 'DEMO02', name: 'Heavy Truck B', type: 'truck', status: 'idle', speed: 0, lat: 21.1500, lng: 79.1000, ignition: false, color: '#f59e0b', lastUpdate: Date.now() - 300000 },
-                    { id: 'DEMO03', name: 'Mini Van A', type: 'van', status: 'alert', speed: 12, lat: 21.1400, lng: 79.0700, ignition: true, color: '#ef4444', lastUpdate: Date.now() - 60000 }
+                    { id: '869727079043558', name: 'Live Tracker (869727079043558)', phone: '+1234567890', type: 'car', status: 'moving', speed: 45, lat: 21.1458, lng: 79.0882, ignition: true, color: '#10b981', fuel: 85, battery: 12.4, temp: 24, lastUpdate: Date.now() },
+                    { id: 'DEMO02', name: 'Heavy Truck B', phone: '+1987654321', type: 'truck', status: 'idle', speed: 0, lat: 21.1500, lng: 79.1000, ignition: true, color: '#f59e0b', fuel: 32, battery: 24.1, lastUpdate: Date.now() - 300000 },
+                    { id: 'DEMO03', name: 'Mini Van A', phone: '+1122334455', type: 'van', status: 'alert', speed: 12, lat: 21.1400, lng: 79.0700, ignition: true, color: '#ef4444', fuel: 12, battery: 11.8, temp: 31, lastUpdate: Date.now() - 60000 }
                 ];
                 setFleet(demoFleet);
             } catch (err) {
                 console.warn('Fleet fetch failed, using demo data');
                 setFleet([
-                    { id: '869727079043558', name: 'Live Tracker (869727079043558)', type: 'car', status: 'moving', speed: 45, lat: 21.1458, lng: 79.0882, ignition: true, color: '#10b981', lastUpdate: Date.now() },
-                    { id: 'DEMO02', name: 'Heavy Truck B', type: 'truck', status: 'idle', speed: 0, lat: 21.1500, lng: 79.1000, ignition: false, color: '#f59e0b', lastUpdate: Date.now() - 300000 },
-                    { id: 'DEMO03', name: 'Mini Van A', type: 'van', status: 'alert', speed: 12, lat: 21.1400, lng: 79.0700, ignition: true, color: '#ef4444', lastUpdate: Date.now() - 60000 }
+                    { id: '869727079043558', name: 'Live Tracker (869727079043558)', phone: '+1234567890', type: 'car', status: 'moving', speed: 45, lat: 21.1458, lng: 79.0882, ignition: true, color: '#10b981', lastUpdate: Date.now() },
+                    { id: 'DEMO02', name: 'Heavy Truck B', phone: '+1987654321', type: 'truck', status: 'idle', speed: 0, lat: 21.1500, lng: 79.1000, ignition: false, color: '#f59e0b', lastUpdate: Date.now() - 300000 },
+                    { id: 'DEMO03', name: 'Mini Van A', phone: '+1122334455', type: 'van', status: 'alert', speed: 12, lat: 21.1400, lng: 79.0700, ignition: true, color: '#ef4444', lastUpdate: Date.now() - 60000 }
                 ]);
             }
         };
@@ -2029,6 +2186,14 @@ export default function App() {
             socket.disconnect();
         };
     }, [user]);
+
+    useEffect(() => {
+        if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }, [theme]);
 
     return (
         <ErrorBoundary>

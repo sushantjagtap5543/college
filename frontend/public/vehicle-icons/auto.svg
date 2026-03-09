@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Amber/yellow triangular auto rickshaw body -->
+  <path d="M20 4 L10 32 L30 32 Z" fill="#d97706"/>
+  <!-- Windshield (top portion) -->
+  <path d="M20 7 L15 21 L25 21 Z" fill="rgba(147,210,255,0.7)"/>
+  <!-- Cabin/roof stripe -->
+  <rect x="15" y="4" width="10" height="2.5" rx="1" fill="#92400e"/>
+  <!-- Rear seat area -->
+  <rect x="12" y="25" width="16" height="5" rx="1.5" fill="#b45309"/>
+  <!-- Headlight (front center) -->
+  <ellipse cx="20" cy="5" rx="2.5" ry="1.5" fill="#fef08a"/>
+  <!-- Taillights -->
+  <rect x="10" y="30" width="4" height="2.5" rx="1" fill="#f87171"/>
+  <rect x="26" y="30" width="4" height="2.5" rx="1" fill="#f87171"/>
+  <!-- Front single wheel -->
+  <ellipse cx="20" cy="4" rx="2" ry="1.5" fill="#1e293b"/>
+  <!-- Rear wheels -->
+  <rect x="7" y="29" width="4" height="5.5" rx="1.5" fill="#1e293b"/>
+  <rect x="29" y="29" width="4" height="5.5" rx="1.5" fill="#1e293b"/>
+  <!-- Rim details -->
+  <rect x="8" y="30.5" width="2" height="2" rx="0.5" fill="#d97706"/>
+  <rect x="30" y="30.5" width="2" height="2" rx="0.5" fill="#d97706"/>
+</svg>

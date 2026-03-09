@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+  <!-- Body -->
+  <rect x="12" y="4" width="16" height="32" rx="6" fill="#64748b"/>
+  <!-- Front windshield -->
+  <rect x="14" y="8" width="12" height="7" rx="2" fill="rgba(147,210,255,0.75)"/>
+  <!-- Cabin divider highlight -->
+  <rect x="13" y="15" width="14" height="1.5" fill="rgba(0,0,0,0.2)"/>
+  <!-- Rear window -->
+  <rect x="14" y="25" width="12" height="5" rx="2" fill="rgba(147,210,255,0.55)"/>
+  <!-- Headlights -->
+  <rect x="13" y="5" width="4.5" height="2.5" rx="1" fill="#fef08a"/>
+  <rect x="22.5" y="5" width="4.5" height="2.5" rx="1" fill="#fef08a"/>
+  <!-- Taillights -->
+  <rect x="13" y="32.5" width="4.5" height="2.5" rx="1" fill="#f87171"/>
+  <rect x="22.5" y="32.5" width="4.5" height="2.5" rx="1" fill="#f87171"/>
+  <!-- Roof highlight -->
+  <rect x="14" y="16" width="12" height="8" rx="2" fill="rgba(255,255,255,0.08)"/>
+  <!-- Wheels -->
+  <rect x="9" y="7" width="3.5" height="6" rx="1.5" fill="#1e293b"/>
+  <rect x="27.5" y="7" width="3.5" height="6" rx="1.5" fill="#1e293b"/>
+  <rect x="9" y="27" width="3.5" height="6" rx="1.5" fill="#1e293b"/>
+  <rect x="27.5" y="27" width="3.5" height="6" rx="1.5" fill="#1e293b"/>
+  <!-- Wheel rims -->
+  <rect x="10" y="8.5" width="1.5" height="3" rx="0.5" fill="#64748b"/>
+  <rect x="28.5" y="8.5" width="1.5" height="3" rx="0.5" fill="#64748b"/>
+  <rect x="10" y="28.5" width="1.5" height="3" rx="0.5" fill="#64748b"/>
+  <rect x="28.5" y="28.5" width="1.5" height="3" rx="0.5" fill="#64748b"/>
+</svg>

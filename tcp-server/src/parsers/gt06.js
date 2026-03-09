@@ -229,6 +229,54 @@ class GT06Parser {
     }
 
     /**
+     * Build a command packet (Protocol 0x80)
+     * @param {string} commandStr - The ASCII command (e.g., "Relay,1#")
+     * @param {number} serial - Serial number
+     * @returns {Buffer} Raw command buffer
+     */
+    static buildCommand(commandStr, serial = 1) {
+        const cmdBuf = Buffer.from(commandStr, 'ascii');
+        const cmdLen = cmdBuf.length;
+
+        // Protocol 0x80 structure:
+        // [1] Length of command content (1 byte)
+        // [4] Server Flag (usually fixed, e.g., 0x00000001)
+        // [N] Command String
+        // [2] Language/Encoding (0x0002 for ASCII/English)
+
+        const serverFlag = Buffer.from([0x00, 0x00, 0x00, 0x01]);
+        const language = Buffer.from([0x00, 0x02]);
+
+        const data = Buffer.concat([
+            Buffer.from([cmdLen]),
+            serverFlag,
+            cmdBuf,
+            language
+        ]);
+
+        const protocolByte = 0x80;
+        const totalLen = data.length + 3; // protocol (1) + serial (2)
+        const serialHi = (serial >> 8) & 0xFF;
+        const serialLo = serial & 0xFF;
+
+        const packetForCrc = Buffer.concat([
+            Buffer.from([totalLen, protocolByte]),
+            data,
+            Buffer.from([serialHi, serialLo])
+        ]);
+
+        const crc = GT06Parser._crc16(packetForCrc);
+        const crcHi = (crc >> 8) & 0xFF;
+        const crcLo = crc & 0xFF;
+
+        return Buffer.concat([
+            Buffer.from([0x78, 0x78]),
+            packetForCrc,
+            Buffer.from([crcHi, crcLo, 0x0D, 0x0A])
+        ]);
+    }
+
+    /**
      * Find the end of the first complete GT06 packet in a buffer.
      * Returns the index of 0x0A in the 0D 0A stop sequence, or -1 if no complete packet found.
      * @param {Buffer} buf
