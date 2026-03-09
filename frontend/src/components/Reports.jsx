@@ -5,10 +5,11 @@ import {
 } from 'lucide-react';
 import {
     LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell, BarChart, Bar
+    PieChart, Pie, Cell, BarChart, Bar, Legend
 } from 'recharts';
 
-export default function Reports() {
+export default function Reports({ fleet = [] }) {
+    const [setError] = useState(null); // Added for error handling
     const [reportType, setReportType] = useState('summary');
     const [selectedDevice, setSelectedDevice] = useState('All Devices');
     const [expandedRow, setExpandedRow] = useState(null);
@@ -71,32 +72,62 @@ export default function Reports() {
     const handleGenerate = async () => {
         setLoading(true);
         try {
-            const imei = selectedDevice === 'All Devices' ? '869727079043558' : selectedDevice;
-            const res = await fetch(`${API_BASE}/api/history?imei=${imei}&from=${dateRange.from}&to=${dateRange.to}`);
+            let allPoints = [];
+            const targetDevices = selectedDevice === 'All Devices'
+                ? fleet.map(v => v.id)
+                : [selectedDevice];
 
-            let data;
-            if (res.ok) {
-                data = await res.json();
-            } else {
-                throw new Error('API Unavailable');
+            for (const imei of targetDevices) {
+                try {
+                    const res = await fetch(`${API_BASE}/api/history?imei=${imei}&from=${dateRange.from}&to=${dateRange.to}`);
+                    const data = await res.json();
+                    if (data.status === 'SUCCESS' && data.points) {
+                        allPoints = [...allPoints, ...data.points.map(p => ({ ...p, imei }))];
+                    }
+                } catch (e) {
+                    console.warn(`Failed fetch for ${imei}`);
+                }
             }
 
-            if (data.status === 'SUCCESS') {
-                const metrics = calculateMetrics(data.points);
-                setReports([{
-                    id: Date.now(),
-                    vehicle: selectedDevice === 'All Devices' ? 'All Devices' : selectedDevice,
+            if (allPoints.length > 0) {
+                const results = [];
+
+                // Add Fleetwide Summary
+                results.push({
+                    id: 'fleet-' + Date.now(),
+                    vehicle: `Fleetwide (${targetDevices.length} Assets)`,
                     date: dateRange.from.split('T')[0],
-                    points: data.points || [],
-                    ...metrics,
-                    trips: Math.ceil((data.points?.length || 0) / 10)
-                }]);
+                    points: allPoints,
+                    ...calculateMetrics(allPoints),
+                    trips: Math.ceil(allPoints.length / 10),
+                    isFleet: true
+                });
+
+                // If All Devices, add individual rows too
+                if (selectedDevice === 'All Devices') {
+                    for (const imei of targetDevices) {
+                        const devicePoints = allPoints.filter(p => p.imei === imei);
+                        if (devicePoints.length > 0) {
+                            results.push({
+                                id: imei + '-' + Date.now(),
+                                vehicle: fleet.find(f => f.id === imei)?.name || imei,
+                                date: dateRange.from.split('T')[0],
+                                points: devicePoints,
+                                ...calculateMetrics(devicePoints),
+                                trips: Math.ceil(devicePoints.length / 10)
+                            });
+                        }
+                    }
+                }
+
+                setReports(results);
                 return;
             }
-            throw new Error('Data format error');
+            throw new Error('No data found for selected period.');
         } catch (err) {
-            console.warn('Report generation failed (API unavailable)', err);
+            console.warn('Report generation failed', err);
             setReports([]);
+            alert('Detailed Analytics: No telemetry data found for the selected period across the fleet.');
         } finally {
             setLoading(false);
         }
@@ -141,7 +172,7 @@ export default function Reports() {
                     </div>
                     <div>
                         <h1 className="text-2xl font-black tracking-tight">Fleet Reports</h1>
-                        <p className="text-slate-500 font-medium text-sm">Generate, view, and export detailed analytical reports.</p>
+                        <p className="text-slate-500 font-medium text-sm">Generate, view, and export detailed analytical reports</p>
                     </div>
                 </div>
 
@@ -266,7 +297,8 @@ export default function Reports() {
                                                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                                                 labelFormatter={(t) => new Date(t).toLocaleTimeString()}
                                             />
-                                            <Area type="monotone" dataKey="speed" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorSpeed)" />
+                                            <Legend verticalAlign="top" height={36} />
+                                            <Area name="Vehicle Speed" type="monotone" dataKey="speed" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorSpeed)" />
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -289,7 +321,8 @@ export default function Reports() {
                                                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                                                 labelFormatter={(t) => new Date(t).toLocaleTimeString()}
                                             />
-                                            <Line type="stepAfter" dataKey="fuel" stroke="#10b981" strokeWidth={3} dot={false} />
+                                            <Legend verticalAlign="top" height={36} />
+                                            <Line name="Fuel Percentage" type="stepAfter" dataKey="fuel" stroke="#10b981" strokeWidth={3} dot={false} />
                                         </LineChart>
                                     </ResponsiveContainer>
                                 </div>

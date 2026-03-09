@@ -2,17 +2,26 @@ import React, { useState } from 'react';
 import {
     User, Bell, Shield, Smartphone, Globe, Moon, Sun,
     Save, Key, Mail, Lock, CheckCircle2, AlertTriangle,
-    Eye, EyeOff
+    Eye, EyeOff, Truck, Box
 } from 'lucide-react';
+import {
+    VEHICLE_ICON_OPTIONS,
+    PIN_COLOR_OPTIONS,
+    getVehicleIconPref,
+    setVehicleIconPref,
+    getVehicleColorPref,
+    setVehicleColorPref
+} from '../utils/statusIcons';
 
 const tabs = [
     { id: 'profile', label: 'My Profile', icon: User },
+    { id: 'assets', label: 'My Vehicles', icon: Truck },
     { id: 'security', label: 'Security & Access', icon: Shield },
     { id: 'appearance', label: 'Appearance', icon: Sun },
     { id: 'audit', label: 'Audit Logs', icon: Globe },
 ];
 
-export default function Settings({ user, theme, setTheme }) {
+export default function Settings({ user, fleet = [], theme, setTheme }) {
     const [activeTab, setActiveTab] = useState('profile');
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -212,31 +221,81 @@ export default function Settings({ user, theme, setTheme }) {
                             </section>
                         )}
 
-                        {activeTab === 'appearance' && (
+                        {activeTab === 'assets' && (
                             <section className="space-y-6">
-                                <div className="bg-indigo-50/50 p-6 rounded-2xl border border-indigo-100 flex items-center gap-4">
-                                    <div className="p-3 bg-white rounded-xl text-indigo-600 shadow-sm"><Sun size={20} /></div>
+                                <div className="bg-emerald-50/50 p-6 rounded-2xl border border-emerald-100 flex items-center gap-4">
+                                    <div className="p-3 bg-white rounded-xl text-emerald-600 shadow-sm"><Truck size={20} /></div>
                                     <div>
-                                        <h4 className="font-bold text-slate-800 text-sm">Appearance & Interface</h4>
-                                        <p className="text-slate-500 text-xs">Customize the visual experience of your dashboard.</p>
+                                        <h4 className="font-bold text-slate-800 text-sm">Vehicle Customization</h4>
+                                        <p className="text-slate-500 text-xs">Personalize how your assets appear on the live map.</p>
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <button
-                                        onClick={() => setTheme('light')}
-                                        className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${theme === 'light' ? 'border-blue-600 bg-blue-50/30 shadow-md' : 'border-slate-100 bg-white hover:border-slate-200'}`}
-                                    >
-                                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-amber-500 shadow-inner"><Sun size={24} /></div>
-                                        <span className="font-black text-xs uppercase tracking-widest text-slate-700">Light Mode</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setTheme('dark')}
-                                        className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3 ${theme === 'dark' ? 'border-blue-600 bg-slate-800 shadow-md' : 'border-slate-100 bg-white hover:border-slate-200'}`}
-                                    >
-                                        <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-blue-400 shadow-inner"><Moon size={24} /></div>
-                                        <span className={`font-black text-xs uppercase tracking-widest ${theme === 'dark' ? 'text-white' : 'text-slate-700'}`}>Dark Mode</span>
-                                    </button>
+                                <div className="space-y-4">
+                                    {fleet.map(v => (
+                                        <div key={v.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-slate-50 border border-slate-100">
+                                                        {VEHICLE_ICON_OPTIONS.find(opt => opt.id === getVehicleIconPref(v.id))?.emoji || '🚗'}
+                                                    </div>
+                                                    <div>
+                                                        <h5 className="font-bold text-slate-800 text-sm">{v.name}</h5>
+                                                        <p className="text-[10px] font-mono text-slate-400">{v.id}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-6">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Icon Type</label>
+                                                    <div className="grid grid-cols-6 gap-1">
+                                                        {VEHICLE_ICON_OPTIONS.map(opt => (
+                                                            <button
+                                                                key={opt.id}
+                                                                onClick={() => {
+                                                                    setVehicleIconPref(v.id, opt.id);
+                                                                    setSuccess(true);
+                                                                    setTimeout(() => setSuccess(false), 2000);
+                                                                }}
+                                                                className={`p-1.5 rounded-lg border transition-all hover:bg-slate-50 ${getVehicleIconPref(v.id) === opt.id ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-slate-100'}`}
+                                                                title={opt.label}
+                                                            >
+                                                                <span className="text-lg">{opt.emoji}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pin Color</label>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {PIN_COLOR_OPTIONS.map(c => (
+                                                            <button
+                                                                key={c.id}
+                                                                onClick={() => {
+                                                                    setVehicleColorPref(v.id, c.id);
+                                                                    setSuccess(true);
+                                                                    setTimeout(() => setSuccess(false), 2000);
+                                                                }}
+                                                                className={`w-6 h-6 rounded-full border-2 transition-all hover:scale-110 ${getVehicleColorPref(v.id) === c.id ? 'border-slate-800 ring-2 ring-slate-200' : 'border-white shadow-sm'}`}
+                                                                style={{ backgroundColor: c.id }}
+                                                                title={c.label}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {fleet.length === 0 && (
+                                        <div className="p-12 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl">
+                                            <Box className="mx-auto text-slate-300 mb-4" size={48} />
+                                            <h3 className="text-slate-500 font-bold">No assets found in your fleet</h3>
+                                            <p className="text-slate-400 text-xs">Assets will appear here once they are registered to your account.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
                         )}

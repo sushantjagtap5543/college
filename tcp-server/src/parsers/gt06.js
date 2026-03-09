@@ -149,21 +149,29 @@ class GT06Parser {
         const courseByte0 = buf[dataStart + 16];
         const courseByte1 = buf[dataStart + 17];
 
-        // Upper 6 bits of courseByte0 are flags; lower 2 bits + courseByte1 = heading
-        const flags = (courseByte0 >> 2) & 0x3F;
-        const heading = ((courseByte0 & 0x03) << 8) | courseByte1;
-
-        // E/W and N/S flags
-        const isEast = !!(flags & 0x08);
-        const isNorth = !!(flags & 0x04);
-        const isFixed = !!(flags & 0x10);
+        /**
+         * GT06 Course/Status Flags (Byte 17 of packet, dataStart + 16):
+         * Bit 7: Reserved
+         * Bit 6: 1=GPS real-time, 0=Re-upload
+         * Bit 5: 1=GPS fixed, 0=No fix
+         * Bit 4: 1=East, 0=West
+         * Bit 3: 1=North, 0=South
+         * Bit 2,1,0: High bits of Course
+         */
+        const isFixed = !!(courseByte0 & 0x20);
+        const isEast = !!(courseByte0 & 0x10);
+        const isNorth = !!(courseByte0 & 0x08);
+        
+        // Heading/Course is bits 2,1,0 of courseByte0 + all 8 bits of courseByte1
+        const heading = ((courseByte0 & 0x07) << 8) | courseByte1;
 
         // Convert raw values to decimal degrees (divide by 1,800,000)
         let lat = latRaw / 1800000.0;
         let lng = lngRaw / 1800000.0;
 
-        if (!isNorth) lat = -lat;
-        if (!isEast) lng = -lng;
+        // Apply hemisphere corrections based on N/S and E/W flags
+        if (!isNorth) lat = -lat; // South is negative
+        if (!isEast) lng = -lng;  // West is negative
 
         const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
 

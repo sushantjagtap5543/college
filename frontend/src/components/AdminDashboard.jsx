@@ -32,7 +32,7 @@ export default function AdminDashboard({
     smsForm, setSmsForm, isSmsSending, smsStatus, handleSmsDispatch,
     isAddingDevice, setIsAddingDevice, newDevice, setNewDevice, handleAddInventory,
     isAssigning, setIsAssigning, assignForm, setAssignForm, handleAssignDevice,
-    handleToggleBlock, API_BASE
+    handleToggleBlock, handleRenew, handleUpdateClient, API_BASE
 }) {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [health, setHealth] = useState(null);
@@ -63,6 +63,10 @@ export default function AdminDashboard({
     const [pinCode, setPinCode] = useState('');
     const [pinError, setPinError] = useState('');
     const [pendingCmd, setPendingCmd] = useState(null);
+
+    // Edit Client State
+    const [editingClient, setEditingClient] = useState(null);
+    const [editClientForm, setEditClientForm] = useState({ name: '', email: '', password: '' });
 
     useEffect(() => {
         if (activeTab === 'logs') fetchCommandLogs();
@@ -314,10 +318,10 @@ export default function AdminDashboard({
                     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-5 duration-700">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                             {[
-                                { label: 'Active Ecosystems', v: clients.length, icon: Users, color: 'text-blue-500', bg: 'bg-blue-50' },
+                                { label: 'Active Ecosystems', v: clients.length, icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-50' },
                                 { label: 'Hardware Mesh', v: inventory.length, icon: Server, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-                                { label: 'Warehouse Stock', v: inventory.filter(i => !i.is_assigned).length, icon: Database, color: 'text-amber-500', bg: 'bg-amber-50' },
-                                { label: 'Live Data Streams', v: fleet.filter(v => v.status === 'moving').length, icon: Activity, color: 'text-rose-500', bg: 'bg-rose-50' },
+                                { label: 'Warehouse Stock', v: inventory.filter(i => !i.is_assigned).length, icon: Database, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                                { label: 'Live Data Streams', v: fleet.filter(v => v.status === 'moving').length, icon: Activity, color: 'text-emerald-500', bg: 'bg-emerald-50' },
                             ].map((k, i) => (
                                 <motion.div whileHover={{ y: -5 }} key={i} className="bg-white rounded-[32px] shadow-sm border border-slate-200 p-8 flex items-center gap-6">
                                     <div className={`w-16 h-16 rounded-[24px] ${k.bg} flex items-center justify-center ${k.color}`}>
@@ -537,9 +541,23 @@ export default function AdminDashboard({
                                             </td>
                                             <td className="py-8 px-5 text-right">
                                                 <div className="flex justify-end gap-3">
-                                                    <button onClick={() => handleRenew(c.id)} className="px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm">+365 Days</button>
-                                                    <button onClick={() => handleToggleBlock(c.id, c.is_blocked)} className={`px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest transition-all ${c.is_blocked ? 'bg-emerald-500 text-black hover:scale-110' : 'bg-white border-2 border-rose-100 text-rose-500 hover:bg-rose-500 hover:text-white shadow-sm'}`}>
-                                                        {c.is_blocked ? 'Restore' : 'Suspend'}
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingClient(c.id);
+                                                            setEditClientForm({ name: c.name, email: c.email, password: '' });
+                                                        }}
+                                                        className="px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 hover:bg-slate-900 hover:text-white transition-all shadow-sm"
+                                                    >
+                                                        Edit profile
+                                                    </button>
+                                                    <button onClick={() => {
+                                                        const days = window.prompt(`Extend billing for ${c.name} (Enter days):`, '365');
+                                                        if (days) handleRenew(c.id, days);
+                                                    }} className="px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm">
+                                                        Update Subscription
+                                                    </button>
+                                                    <button onClick={() => handleToggleBlock(c.id, c.is_blocked)} className={`px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest transition-all ${c.is_blocked ? 'bg-emerald-500 text-black hover:scale-110 shadow-lg shadow-emerald-200' : 'bg-white border text-rose-500 hover:bg-rose-500 hover:text-white shadow-sm'}`}>
+                                                        {c.is_blocked ? 'Restore Account' : 'Suspend Access'}
                                                     </button>
                                                 </div>
                                             </td>
@@ -548,6 +566,70 @@ export default function AdminDashboard({
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* Edit Client Modal Overlay */}
+                        <AnimatePresence>
+                            {editingClient && (
+                                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+                                    <motion.div
+                                        initial={{ scale: 0.9, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        exit={{ scale: 0.9, opacity: 0 }}
+                                        className="bg-white rounded-[40px] shadow-2xl w-full max-w-xl p-12 relative overflow-hidden"
+                                    >
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50" />
+                                        <h3 className="text-3xl font-black text-slate-900 mb-8 italic tracking-tighter uppercase">Authority Override: Account</h3>
+
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Principal Name</label>
+                                                <input
+                                                    value={editClientForm.name}
+                                                    onChange={e => setEditClientForm({ ...editClientForm, name: e.target.value })}
+                                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Identity Email</label>
+                                                <input
+                                                    value={editClientForm.email}
+                                                    onChange={e => setEditClientForm({ ...editClientForm, email: e.target.value })}
+                                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Reset Master Key (Optional)</label>
+                                                <input
+                                                    type="password"
+                                                    placeholder="Leave blank to keep current"
+                                                    value={editClientForm.password}
+                                                    onChange={e => setEditClientForm({ ...editClientForm, password: e.target.value })}
+                                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-4 mt-12">
+                                            <button
+                                                onClick={() => {
+                                                    handleUpdateClient(editingClient, editClientForm);
+                                                    setEditingClient(null);
+                                                }}
+                                                className="flex-1 bg-slate-900 text-white py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-[11px] hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"
+                                            >
+                                                Apply Override
+                                            </button>
+                                            <button
+                                                onClick={() => setEditingClient(null)}
+                                                className="px-10 bg-slate-100 text-slate-500 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-[11px] hover:bg-rose-50 hover:text-rose-500 transition-all"
+                                            >
+                                                Abort
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                </div>
+                            )}
+                        </AnimatePresence>
                     </div>
                 )}
 

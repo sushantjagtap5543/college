@@ -56,22 +56,27 @@ const server = net.createServer((socket) => {
 
     const handlePacket = async (socket, packetBuf, remoteAddr) => {
         const hexStr = packetBuf.toString('hex').toUpperCase();
-        const parsed = GT06Parser.parse(packetBuf);
 
-        if (!parsed.valid) {
-            console.warn(`[WARN] ${remoteAddr} → Invalid packet: ${parsed.reason} | Raw: ${hexStr.substring(0, 40)}`);
+        // Detect protocol before parsing so we know which parser to use
+        const detection = ProtocolDetector.detect(packetBuf);
+        const parsed = (detection && detection.parsed)
+            ? detection.parsed
+            : GT06Parser.parse(packetBuf);
+
+        if (!parsed || !parsed.valid) {
+            console.warn(`[WARN] ${remoteAddr} → Invalid packet: ${parsed ? parsed.reason : 'parse failed'} | Protocol: ${(detection && detection.protocol) || 'unknown'} | Raw: ${hexStr.substring(0, 40)}`);
             return;
         }
 
         if (parsed.type === 'LOGIN') {
             deviceImei = parsed.imei;
-            console.log(`[LOGIN] Device connected: IMEI=${deviceImei} from ${remoteAddr}`);
+            console.log(`[LOGIN] Device connected: IMEI=${deviceImei} | Protocol: ${detection.protocol || 'GT06'} from ${remoteAddr}`);
 
             // Auto-update protocol and model in DB
             try {
                 const proto = detection.protocol || 'GT06';
                 await pool.query(
-                    "UPDATE device_inventory SET protocol = $1 WHERE imei = $2 AND (protocol IS NULL OR protocol = 'GT06')", 
+                    "UPDATE device_inventory SET protocol = $1 WHERE imei = $2 AND (protocol IS NULL OR protocol = 'GT06')",
                     [proto, deviceImei]
                 );
                 const modelRes = await pool.query("SELECT id FROM device_models WHERE protocol = $1 LIMIT 1", [proto]);
@@ -81,11 +86,11 @@ const server = net.createServer((socket) => {
                         [modelRes.rows[0].id, deviceImei]
                     );
                 }
-            } catch(e) { console.error('[DB] Auto-link Error:', e.message); }
+            } catch (e) { console.error('[DB] Auto-link Error:', e.message); }
 
-            // Send proper ACK
-            const ack = (detection.protocol === 'GT06') ? GT06Parser.getResponse('LOGIN', parsed.serial || 1) : null;
-            if (ack) {
+            // Send proper ACK based on protocol
+            const ack = GT06Parser.getResponse('LOGIN', parsed.serial || 1);
+            if (ack && (detection.protocol === 'GT06' || !detection.protocol)) {
                 socket.write(ack);
                 console.log(`[ACK] Login ACK sent to ${deviceImei}`);
             }
@@ -149,10 +154,11 @@ const server = net.createServer((socket) => {
             }
         }
         else if (parsed.type === 'HEARTBEAT') {
-            console.log(`[HEARTBEAT] From ${deviceImei || remoteAddr}`);
+            console.log(`[HEARTBEAT] From ${deviceImei || remoteAddr} | Protocol: ${(detection && detection.protocol) || 'GT06'}`);
 
-            // Send proper ACK
-            const ack = (detection.protocol === 'GT06') ? GT06Parser.getResponse('HEARTBEAT', parsed.serial || 1) : null;
+            // Protocol-aware ACK
+            const proto = (detection && detection.protocol) || 'GT06';
+            const ack = (proto === 'GT06') ? GT06Parser.getResponse('HEARTBEAT', parsed.serial || 1) : null;
             if (ack) socket.write(ack);
 
             // Check for pending commands in queue (engine cut/restore)
@@ -173,7 +179,7 @@ const server = net.createServer((socket) => {
                                     [devRes.rows[0].id]
                                 );
                             }
-                        } catch(e) { console.error('[DB] Failed to update command log status:', e.message); }
+                        } catch (e) { console.error('[DB] Failed to update command log status:', e.message); }
                     }
                 } catch (err) {
                     console.error(`[Redis] Command queue error for ${deviceImei}:`, err);

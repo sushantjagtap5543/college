@@ -133,11 +133,8 @@ export default function Layout({ children, user, onLogout }) {
                     ))}
                     <div className="w-8 border-b border-[#2a344a] my-2" />
 
-                    <button onClick={() => setShowPassModal(true)} title="Change Password" className="flex flex-col items-center justify-center text-slate-400 hover:text-white w-14 p-3 rounded-xl hover:bg-[#202b45] transition-all">
-                        <KeyRound className="w-6 h-6" strokeWidth={1.5} />
-                    </button>
                     <button onClick={onLogout} title="Log Out" className="flex flex-col items-center justify-center text-slate-400 hover:text-red-400 w-14 p-3 rounded-xl hover:bg-[#202b45] transition-all">
-                        <LogOut className="w-6 h-6" strokeWidth={1.5} />
+                        <LogOut className="w-8 h-8" strokeWidth={1.5} />
                     </button>
                 </div>
             </aside>
@@ -145,10 +142,19 @@ export default function Layout({ children, user, onLogout }) {
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#f3f4f6]">
                 {/* GeoSurePath Classic Header */}
-                <header className="h-14 bg-[#39569c] text-white flex items-center justify-between px-6 z-[90] shrink-0 shadow-md">
-                    <div className="flex items-center gap-4">
-                        <Menu size={20} className="cursor-pointer hover:text-blue-200" />
-                        <div className="text-lg font-semibold tracking-wide">
+                <header className="h-16 bg-[#1a233a] text-white flex items-center justify-between px-6 z-[90] shrink-0 shadow-lg border-b border-white/5">
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+                            <img src="/logo.png" alt="GeoSurePath" className="w-10 h-10 rounded-xl shadow-[0_0_16px_rgba(16,185,129,0.3)] group-hover:scale-105 transition-transform object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+                            <div className="hidden bg-[#10b981] p-1.5 rounded-lg items-center justify-center">
+                                <MapIcon className="text-black" size={16} />
+                            </div>
+                            <span className="font-black text-xl tracking-tighter uppercase italic">GEOSURE<span className="text-[#10b981]">PATH</span></span>
+                        </div>
+
+                        <div className="h-8 w-px bg-white/10 hidden md:block" />
+
+                        <div className="text-sm font-black uppercase tracking-[0.2em] text-slate-400 hidden md:block">
                             {location.pathname === '/' || location.pathname === '/client' || location.pathname === '/admin' ? 'Dashboard' :
                                 location.pathname.startsWith('/live') ? 'Live Tracking' :
                                     location.pathname.startsWith('/reports') ? 'Reports' :

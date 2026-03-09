@@ -10,12 +10,29 @@ import {
     AreaChart, Area
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapContainer, TileLayer, Marker, ZoomControl } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, ZoomControl, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getVehicleIcon, VEHICLE_ICON_OPTIONS, getVehicleIconPref } from '../utils/statusIcons';
 import AdminDashboard from './AdminDashboard';
+
+// Auto-fit map bounds to all vehicle positions
+const MapAutoCenter = ({ fleet }) => {
+    const map = useMap();
+    useEffect(() => {
+        const validPositions = fleet
+            .filter(v => v.lat && v.lng && !isNaN(Number(v.lat)) && !isNaN(Number(v.lng)))
+            .map(v => [Number(v.lat), Number(v.lng)]);
+        if (validPositions.length === 0) return;
+        if (validPositions.length === 1) {
+            map.setView(validPositions[0], 14);
+        } else {
+            try { map.fitBounds(validPositions, { padding: [40, 40] }); } catch (e) { }
+        }
+    }, [fleet, map]);
+    return null;
+};
 
 // Reuse basic icon logic for dashboard preview
 // (Replaced by shared utility)
@@ -43,14 +60,14 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
     const [clientVehicleForm, setClientVehicleForm] = useState({ imei: '', vehicleName: '', plateNumber: '' });
 
     const kpis = [
-        { label: 'Total Distance', value: '113.8 Km', icon: RouteIcon, color: '#10b981', trend: '+12%' },
-        { label: 'Active Trips', value: '12', icon: MapPin, color: '#3b82f6', trend: 'Live' },
-        { label: 'Drive Time', value: '8h 24m', icon: Clock, color: '#8b5cf6', trend: '-5%' },
-        { label: 'Idling', value: '2h 15m', icon: Activity, color: '#f59e0b', trend: '+2%' },
-        { label: 'Stop Duration', value: '1d 4h', icon: StopCircle, color: '#ef4444', trend: 'Normal' },
-        { label: 'Fuel Usage', value: '42.5 L', icon: Zap, color: '#06b6d4', trend: '-8%' },
-        { label: 'Avg Speed', value: '42 Km/h', icon: Gauge, color: '#10b981', trend: 'Stable' },
-        { label: 'Max Speed', value: '98 Km/h', icon: Gauge, color: '#ef4444', trend: 'Alert' },
+        { label: 'Total Distance', value: '113.8 Km', icon: RouteIcon, trend: '+12%' },
+        { label: 'Active Trips', value: '12', icon: MapPin, trend: 'Live' },
+        { label: 'Drive Time', value: '8h 24m', icon: Clock, trend: '-5%' },
+        { label: 'Idling', value: '2h 15m', icon: Activity, trend: '+2%' },
+        { label: 'Stop Duration', value: '1d 4h', icon: StopCircle, trend: 'Normal' },
+        { label: 'Fuel Usage', value: '42.5 L', icon: Zap, trend: '-8%' },
+        { label: 'Avg Speed', value: '42 Km/h', icon: Gauge, trend: 'Stable' },
+        { label: 'Max Speed', value: '98 Km/h', icon: Gauge, trend: 'Alert' },
     ];
 
     const runningCount = fleet.filter(v => v.status === 'moving').length;
@@ -59,12 +76,12 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
     const alertCount = fleet.filter(v => v.status === 'alert').length;
 
     const statuses = [
-        { label: 'Moving', count: runningCount, color: '#10b981', bg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' },
-        { label: 'Idle', count: idleCount, color: '#f59e0b', bg: 'bg-amber-500/10 border-amber-500/20 text-amber-500' },
-        { label: 'Stopped', count: stopCount, color: '#ef4444', bg: 'bg-rose-500/10 border-rose-500/20 text-rose-500' },
-        { label: 'Alert', count: alertCount, color: '#f43f5e', bg: 'bg-rose-600/10 border-rose-600/20 text-rose-600' },
-        { label: 'Inactive', count: 0, color: '#3b82f6', bg: 'bg-blue-500/10 border-blue-500/20 text-blue-500' },
-        { label: 'Connected', count: fleet.length, color: '#334155', bg: 'bg-slate-800/10 border-slate-800/20 text-slate-800' },
+        { label: 'Moving', count: runningCount },
+        { label: 'Idle', count: idleCount },
+        { label: 'Stopped', count: stopCount },
+        { label: 'Alert', count: alertCount },
+        { label: 'Inactive', count: 0 },
+        { label: 'Connected', count: fleet.length },
     ];
 
     const [chartTimeFilter, setChartTimeFilter] = useState('week');
@@ -258,6 +275,49 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
         }
     };
 
+    const handleRenew = async (clientId, manualDays = null) => {
+        const days = manualDays || window.prompt('Enter days to add to subscription:', '365');
+        if (!days || isNaN(days)) return;
+
+        try {
+            const req = await fetch(`${API_BASE}/api/admin/clients/renew`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: clientId, daysToAdd: parseInt(days) })
+            });
+            const data = await req.json();
+            if (data.status === 'SUCCESS') {
+                alert(`SUCCESS: Subscription extended by ${days} days.`);
+                fetchAdminData();
+            } else {
+                alert(data.message || 'Renewal failed.');
+            }
+        } catch (err) {
+            console.error('Failed to renew subscription', err);
+            alert('Network error during renewal.');
+        }
+    };
+
+    const handleUpdateClient = async (userId, data) => {
+        try {
+            const req = await fetch(`${API_BASE}/api/admin/clients/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, ...data })
+            });
+            const res = await req.json();
+            if (res.status === 'SUCCESS') {
+                alert('User details updated successfully.');
+                fetchAdminData();
+            } else {
+                alert(res.message || 'Update failed.');
+            }
+        } catch (err) {
+            console.error('Update Error:', err);
+            alert('Network error.');
+        }
+    };
+
     if (type === 'ADMIN') {
         return <AdminDashboard
             clients={clients} inventory={inventory} isLoading={isLoading}
@@ -272,6 +332,8 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             assignForm={assignForm} setAssignForm={setAssignForm}
             handleAssignDevice={handleAssignDevice}
             handleToggleBlock={handleToggleBlock}
+            handleRenew={handleRenew}
+            handleUpdateClient={handleUpdateClient}
             API_BASE={API_BASE}
         />;
     }
@@ -286,7 +348,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             {/* Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <div>
-                    <h1 className="text-3xl font-black tracking-tight text-slate-900">Fleet Intelligence <span className="text-emerald-500">Live</span></h1>
+                    <h1 className="text-3xl font-black tracking-tight text-slate-900">Fleet Intelligence <span className="text-indigo-600">Live</span></h1>
                     <p className="text-slate-500 font-medium mt-1 uppercase text-[10px] tracking-widest flex items-center gap-2">
                         <Activity size={12} className="animate-pulse" /> Real-time operational oversight
                     </p>
@@ -302,14 +364,15 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-6 mb-10">
                 {statuses.map((s, i) => (
                     <motion.div
-                        whileHover={{ y: -6, scale: 1.02 }}
+                        initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.05 }}
+                        whileHover={{ y: -4, scale: 1.02 }}
                         key={i}
-                        className={`${s.bg} border backdrop-blur-md rounded-[32px] p-6 flex flex-col justify-between h-[150px] shadow-2xl shadow-slate-200/50 transition-all border-white/40`}
+                        className="bg-white border border-slate-200 rounded-3xl p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all"
                     >
-                        <div className="text-[11px] font-black tracking-[0.2em] uppercase opacity-80 italic">{s.label}</div>
+                        <div className="text-[12px] font-bold text-slate-500 uppercase tracking-widest">{s.label}</div>
                         <div className="flex items-baseline gap-2">
-                            <div className="text-5xl font-black tracking-tighter">{s.count}</div>
-                            <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
+                            <div className="text-3xl font-black text-slate-900">{s.count}</div>
+                            <div className="text-[10px] font-bold text-slate-400">UNITS</div>
                         </div>
                     </motion.div>
                 ))}
@@ -321,14 +384,14 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                     <motion.div
                         initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
                         key={i}
-                        className="bg-white rounded-[24px] shadow-sm border border-slate-100 p-6 group hover:border-[#10b981]/40 transition-all hover:shadow-xl"
+                        className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 group hover:border-slate-300 transition-all"
                     >
-                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4 bg-slate-50 text-slate-400 group-hover:bg-[#10b981]/10 group-hover:text-[#10b981] transition-all">
-                            <kpi.icon size={22} />
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-slate-50 text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                            <kpi.icon size={18} />
                         </div>
-                        <div className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-2 font-inter">{kpi.label}</div>
-                        <div className="flex items-baseline justify-between gap-1">
-                            <div className="text-slate-900 font-bold text-lg tracking-tight">{kpi.value}</div>
+                        <div className="text-slate-500 text-[11px] font-bold uppercase tracking-tight mb-1">{kpi.label}</div>
+                        <div className="flex items-baseline justify-between">
+                            <div className="text-slate-950 font-black text-lg tracking-tight">{kpi.value}</div>
                             {kpi.trend && (
                                 <span className={`text-[10px] font-black ${kpi.trend.startsWith('+') ? 'text-emerald-500' : kpi.trend.startsWith('-') ? 'text-rose-500' : 'text-slate-400'}`}>
                                     {kpi.trend}
@@ -353,8 +416,8 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                             zoomControl={false}
                         >
                             <TileLayer
-                                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                                attribution='&copy; ESRI &copy; ArcGIS'
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; OpenStreetMap'
                             />
                             <MarkerClusterGroup chunkedLoading>
                                 {fleet.map(v => v.lat && v.lng && (
@@ -365,6 +428,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                                     />
                                 ))}
                             </MarkerClusterGroup>
+                            <MapAutoCenter fleet={fleet} />
                         </MapContainer>
 
                         {/* Map Overlay HUD */}

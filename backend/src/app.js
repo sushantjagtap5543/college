@@ -647,6 +647,29 @@ app.post('/api/admin/clients/renew', async (req, res) => {
     }
 });
 
+// 4d. Admin Update Client Details
+app.post('/api/admin/clients/update', async (req, res) => {
+    const { userId, name, email, password } = req.body;
+    try {
+        let query = "UPDATE users SET name = $1, email = $2";
+        const params = [name, email, userId];
+
+        if (password) {
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(password, salt);
+            query += ", password_hash = $4, password_text = $5";
+            params.push(hash, password);
+        }
+
+        query += " WHERE id = $3";
+        await pool.query(query, params);
+        res.json({ status: 'SUCCESS', message: 'User details updated successfully.' });
+    } catch (err) {
+        console.error('Admin Update Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to update user.' });
+    }
+});
+
 // --- ADVANCED ADMIN CONTROLS: DATA ARCHIVAL & BACKUPS ---
 
 // Daily Google Drive Backup Task (Running at 1 AM)
@@ -769,6 +792,30 @@ app.get('/api/alerts', async (req, res) => {
         res.json({ status: 'SUCCESS', alerts: result.rows });
     } catch (err) {
         res.status(500).json({ status: 'ERROR', message: 'Failed to fetch alerts.' });
+    }
+});
+
+// 5b. Geofence Operations
+app.get('/api/geofences', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, name, fence_type, coordinates FROM geofences');
+        res.json({ status: 'SUCCESS', geofences: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Failed to fetch geofences' });
+    }
+});
+
+app.post('/api/geofences', async (req, res) => {
+    const { name, fence_type, coordinates, userId } = req.body;
+    try {
+        await pool.query(
+            'INSERT INTO geofences (name, fence_type, coordinates, user_id) VALUES ($1, $2, $3, $4)',
+            [name, fence_type, JSON.stringify(coordinates), userId]
+        );
+        res.json({ status: 'SUCCESS' });
+    } catch (err) {
+        console.error("Geofence save error:", err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to save geofence' });
     }
 });
 

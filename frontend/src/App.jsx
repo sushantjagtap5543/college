@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
@@ -24,7 +24,24 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import Draggable from 'react-draggable';
 import { io } from 'socket.io-client';
 
-// --- Helper: Map pan controller (react-leaflet v5 compatible, avoids whenReady) ---
+// --- Helper: Map Auto-Scaling Controller ---
+function MapAutoCenter({ fleet }) {
+    const map = useMap();
+    useEffect(() => {
+        if (!fleet || fleet.length === 0) return;
+        const validCoords = fleet
+            .filter(v => v.lat && v.lng && !isNaN(v.lat) && !isNaN(v.lng))
+            .map(v => [Number(v.lat), Number(v.lng)]);
+
+        if (validCoords.length > 0) {
+            const bounds = L.latLngBounds(validCoords);
+            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+        }
+    }, [fleet, map]);
+    return null;
+}
+
+// --- Helper: Map pan controller ---
 function MapController({ panTo }) {
     const map = useMap();
     useEffect(() => {
@@ -876,6 +893,7 @@ const LandingPage = ({ onLogin }) => {
 
 const LoginPage = ({ onLogin }) => {
     const navigate = useNavigate();
+    const location = useLocation();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -1019,10 +1037,19 @@ const LoginPage = ({ onLogin }) => {
                                 <span className="text-xs font-black uppercase tracking-widest">{error}</span>
                             </div>
                         )}
-                        {successMsg && (
+                        {(successMsg || (location.state?.registered)) && (
                             <div className="mb-8 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-4 text-emerald-500 animate-in slide-in-from-top-2">
                                 <CheckCircle2 size={20} />
-                                <span className="text-xs font-black uppercase tracking-widest">{successMsg}</span>
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-black uppercase tracking-widest">
+                                        {successMsg || `Welcome, ${location.state?.name}!`}
+                                    </span>
+                                    {location.state?.registered && (
+                                        <span className="text-[10px] font-bold opacity-80 uppercase tracking-tighter mt-1">
+                                            Registration successful. Please login to continue.
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         )}
 
@@ -1170,11 +1197,26 @@ const RegistrationPage = () => {
 
         setIsLoading(true);
         try {
-            const req = await fetch(`${API_BASE}/api/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password, mobile, vehicles }) });
-            if ((await req.json()).status === 'SUCCESS') navigate('/login');
-            else setError('Registration Sequence Failed.');
-        } catch { setError('Network Synchronization Error.'); }
-        finally { setIsLoading(false); }
+            const req = await fetch(`${API_BASE}/api/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, password, mobile, vehicles })
+            });
+            const data = await req.json();
+
+            if (data.status === 'SUCCESS') {
+                // Success - redirect to login with welcome state
+                alert('Welcome to GeoSurePath! Your registration is complete. Please log in to access your dashboard.');
+                navigate('/login', { state: { registered: true, name } });
+            } else {
+                // Real error from backend
+                setError(data.message || 'Specific Registration Failure: Resource Conflict or Invalid Data.');
+            }
+        } catch (err) {
+            setError('Network Synchronization Error. Please check your connection.');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -1346,7 +1388,7 @@ const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
         </React.Fragment>
     );
 };
-const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) => {
+const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setTheme, user }) => {
     const [selectedVehicle, setSelectedVehicle] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('Objects');
@@ -1429,10 +1471,16 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
             coordinates: formattedCoords
         };
 
+        // Sync to backend
+        fetch(`${API_BASE}/api/geofences`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, ...newGeofence })
+        }).catch(err => console.error("Geofence sync failed", err));
+
         setGeofences(prev => [...prev, newGeofence]);
         setDrawMode(null);
         alert(`Geofence '${name}' created and saved!`);
-        // Normally you'd sync to backend here
     };
 
     // (Using user from props)
@@ -1768,6 +1816,7 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
                         attribution='&copy; OpenStreetMap &copy; CARTO'
                     />
                     <ZoomControl position="bottomright" />
+                    {!historyMode && <MapAutoCenter fleet={fleet} />}
                     <MapController panTo={mapPanTo} />
 
                     {/* Clustered Vehicles */}
@@ -2217,9 +2266,10 @@ export default function App() {
     });
 
     const [fleet, setFleet] = useState([]);
-    const [theme, setTheme] = useState('dark');
+    const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
     const [mapTile, setMapTile] = useState(localStorage.getItem('mapTile') || 'street');
     useEffect(() => { localStorage.setItem('mapTile', mapTile); }, [mapTile]);
+    useEffect(() => { localStorage.setItem('theme', theme); }, [theme]);
     const [wsStatus, setWsStatus] = useState('disconnected');
 
     const handleLogin = (userData) => {
@@ -2358,8 +2408,8 @@ export default function App() {
                                     user={user}
                                 />
                             } />
-                            <Route path="/reports" element={<Reports />} />
-                            <Route path="/settings" element={<Settings user={user} theme={theme} setTheme={setTheme} />} />
+                            <Route path="/reports" element={<Reports fleet={fleet} />} />
+                            <Route path="/settings" element={<Settings user={user} fleet={fleet} theme={theme} setTheme={setTheme} />} />
                             <Route path="*" element={<Navigate to={user.role === 'ADMIN' ? '/admin' : '/client'} replace />} />
                         </Routes>
                     </Layout>
