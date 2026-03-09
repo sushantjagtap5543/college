@@ -66,7 +66,7 @@ export default function AdminDashboard({
 
     // Edit Client State
     const [editingClient, setEditingClient] = useState(null);
-    const [editClientForm, setEditClientForm] = useState({ name: '', email: '', password: '' });
+    const [editClientForm, setEditClientForm] = useState({ name: '', email: '', password: '', subscriptionPlan: '', subscriptionEndDate: '' });
 
     useEffect(() => {
         if (activeTab === 'logs') fetchCommandLogs();
@@ -543,16 +543,30 @@ export default function AdminDashboard({
                                                 <div className="flex justify-end gap-3">
                                                     <button
                                                         onClick={() => {
+                                                            const client = clients.find(cl => cl.id === c.id);
                                                             setEditingClient(c.id);
-                                                            setEditClientForm({ name: c.name, email: c.email, password: '' });
+                                                            setEditClientForm({
+                                                                name: c.name,
+                                                                email: c.email,
+                                                                password: '',
+                                                                subscriptionPlan: client?.subscription_plan || 'Premium',
+                                                                subscriptionEndDate: client?.subscription_end_date ? new Date(client.subscription_end_date).toISOString().split('T')[0] : ''
+                                                            });
                                                         }}
                                                         className="px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 hover:bg-slate-900 hover:text-white transition-all shadow-sm"
                                                     >
                                                         Edit profile
                                                     </button>
                                                     <button onClick={() => {
-                                                        const days = window.prompt(`Extend billing for ${c.name} (Enter days):`, '365');
-                                                        if (days) handleRenew(c.id, days);
+                                                        const client = clients.find(cl => cl.id === c.id);
+                                                        setEditingClient(c.id);
+                                                        setEditClientForm({
+                                                            name: c.name,
+                                                            email: c.email,
+                                                            password: '',
+                                                            subscriptionPlan: client?.subscription_plan || 'Premium',
+                                                            subscriptionEndDate: client?.subscription_end_date ? new Date(client.subscription_end_date).toISOString().split('T')[0] : ''
+                                                        });
                                                     }} className="px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm">
                                                         Update Subscription
                                                     </button>
@@ -607,12 +621,38 @@ export default function AdminDashboard({
                                                     className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all"
                                                 />
                                             </div>
+
+                                            <div className="grid grid-cols-2 gap-6">
+                                                <div>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Subscription Plan</label>
+                                                    <select
+                                                        value={editClientForm.subscriptionPlan}
+                                                        onChange={e => setEditClientForm({ ...editClientForm, subscriptionPlan: e.target.value })}
+                                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all"
+                                                    >
+                                                        <option value="Basic">Basic Plan</option>
+                                                        <option value="Premium">Premium Plan</option>
+                                                        <option value="Enterprise">Enterprise Plan</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 px-1">Expiry Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={editClientForm.subscriptionEndDate}
+                                                        onChange={e => setEditClientForm({ ...editClientForm, subscriptionEndDate: e.target.value })}
+                                                        className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="flex gap-4 mt-12">
                                             <button
                                                 onClick={() => {
-                                                    handleUpdateClient(editingClient, editClientForm);
+                                                    const { subscriptionPlan, subscriptionEndDate, ...rest } = editClientForm;
+                                                    handleUpdateClient(editingClient, rest);
+                                                    handleUpdateBilling(editingClient, { subscriptionPlan, subscriptionEndDate });
                                                     setEditingClient(null);
                                                 }}
                                                 className="flex-1 bg-slate-900 text-white py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-[11px] hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200"

@@ -727,11 +727,11 @@ app.get('/api/geofences', async (req, res) => {
 app.get('/api/admin/clients', async (req, res) => {
     try {
         const query = `
-            SELECT u.id, u.name, u.email, u.is_active, u.is_blocked, COUNT(v.id) as vehicle_count
+            SELECT u.id, u.name, u.email, u.is_active, u.is_blocked, u.subscription_plan, u.subscription_end_date, COUNT(v.id) as vehicle_count
             FROM users u
             LEFT JOIN vehicles v ON u.id = v.client_id
             WHERE u.role_id = (SELECT id FROM roles WHERE name = 'CLIENT')
-            GROUP BY u.id, u.name, u.email, u.is_active, u.is_blocked
+            GROUP BY u.id, u.name, u.email, u.is_active, u.is_blocked, u.subscription_plan, u.subscription_end_date
             ORDER BY u.created_at DESC
         `;
         const result = await pool.query(query);
@@ -1087,20 +1087,39 @@ redisSub.connect().then(() => {
             const speedKmh = parseFloat(data.speed) || 0;
             if (speedKmh > 0) await checkOverspeed(data.imei, speedKmh);
 
+            // Fetch vehicle info for richer alerts
+            const vRes = await pool.query('SELECT v.vehicle_name, v.plate_number FROM vehicles v JOIN devices d ON d.id=v.device_id WHERE d.imei=$1 AND v.is_active=true LIMIT 1', [data.imei]);
+            const vehicleName = vRes.rows[0]?.vehicle_name || data.imei;
+            const plateNumber = vRes.rows[0]?.plate_number || 'N/A';
+
             entered.forEach(gf => {
-                const alert = { type: 'GEOFENCE_ENTER', imei: data.imei, fenceName: gf.name, timestamp: new Date() };
+                const alert = {
+                    type: 'GEOFENCE_ENTER',
+                    imei: data.imei,
+                    vehicleName,
+                    plateNumber,
+                    fenceName: gf.name,
+                    message: `Vehicle ${vehicleName} (${plateNumber}) ENTERED geofence: ${gf.name}`,
+                    timestamp: new Date()
+                };
                 io.to(`imei_${data.imei}`).emit('VEHICLE_ALERT', alert);
                 io.to('admin_room').emit('VEHICLE_ALERT', alert);
-                // Record Alert in DB
-                pool.query('INSERT INTO alerts (device_id, message, timestamp) SELECT id, $2, NOW() FROM devices WHERE imei = $1', [data.imei, `Entered Geofence: ${gf.name}`]);
+                pool.query('INSERT INTO alerts (device_id, message, timestamp) SELECT id, $2, NOW() FROM devices WHERE imei = $1', [data.imei, alert.message]);
             });
 
             exited.forEach(gf => {
-                const alert = { type: 'GEOFENCE_EXIT', imei: data.imei, fenceName: gf.name, timestamp: new Date() };
+                const alert = {
+                    type: 'GEOFENCE_EXIT',
+                    imei: data.imei,
+                    vehicleName,
+                    plateNumber,
+                    fenceName: gf.name,
+                    message: `Vehicle ${vehicleName} (${plateNumber}) EXITED geofence: ${gf.name}`,
+                    timestamp: new Date()
+                };
                 io.to(`imei_${data.imei}`).emit('VEHICLE_ALERT', alert);
                 io.to('admin_room').emit('VEHICLE_ALERT', alert);
-                // Record Alert in DB
-                pool.query('INSERT INTO alerts (device_id, message, timestamp) SELECT id, $2, NOW() FROM devices WHERE imei = $1', [data.imei, `Exited Geofence: ${gf.name}`]);
+                pool.query('INSERT INTO alerts (device_id, message, timestamp) SELECT id, $2, NOW() FROM devices WHERE imei = $1', [data.imei, alert.message]);
             });
 
         } catch (e) {
@@ -1112,14 +1131,23 @@ redisSub.connect().then(() => {
 
 
 
-// ==========================================
-// ==========================================
-// SPEED LIMIT — Migration + APIs  
-// ==========================================
+// Ensure subscription_plan column exists
+pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(50) DEFAULT 'Premium'").catch(e => console.warn('[DB] subscription_plan:', e?.message));
 
-// Ensure speed_limit column exists
-pool.query('ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS speed_limit INTEGER NOT NULL DEFAULT 80').catch(e => console.warn('[DB] speed_limit:', e?.message));
-pool.query("ALTER TABLE device_inventory ADD COLUMN IF NOT EXISTS protocol VARCHAR(50) DEFAULT 'GT06'").catch(e => console.warn('[DB] protocol:', e?.message));
+// PATCH /api/admin/clients/:id/billing
+app.patch('/api/admin/clients/:id/billing', async (req, res) => {
+    const { subscriptionPlan, subscriptionEndDate } = req.body;
+    try {
+        await pool.query(
+            "UPDATE users SET subscription_plan = $1, subscription_end_date = $2 WHERE id = $3",
+            [subscriptionPlan, subscriptionEndDate, req.params.id]
+        );
+        res.json({ status: 'SUCCESS', message: 'Billing updated successfully.' });
+    } catch (e) {
+        console.error('Update billing error:', e);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to update billing.' });
+    }
+});
 
 // Per-IMEI overspeed cooldown (one alert per 5 minutes)
 const lastOverspeedAlert = {};
@@ -1327,12 +1355,13 @@ app.get('/api/admin/revenue', async (req, res) => {
         // Per-client billing reference: reg date + 1 year = next billing due
         const clientBilling = await pool.query(`
             SELECT u.id, u.name, u.email, u.created_at as registered_at,
+                   u.subscription_plan, u.subscription_end_date,
                    COUNT(v.id) as vehicles,
                    u.is_blocked
             FROM users u
             LEFT JOIN vehicles v ON u.id = v.client_id AND v.is_active = true
             WHERE u.role_id = (SELECT id FROM roles WHERE name = 'CLIENT')
-            GROUP BY u.id, u.name, u.email, u.created_at, u.is_blocked
+            GROUP BY u.id, u.name, u.email, u.created_at, u.is_blocked, u.subscription_plan, u.subscription_end_date
             ORDER BY u.created_at DESC
         `);
 

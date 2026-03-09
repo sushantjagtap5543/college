@@ -1369,7 +1369,8 @@ const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
                 setPoints(newPoints);
             }
         },
-        dblclick() {
+        dblclick(e) {
+            L.DomEvent.stopPropagation(e);
             if (drawMode === 'polygon' && points.length >= 3) {
                 onComplete({ type: 'POLYGON', points });
                 setPoints([]);
@@ -1814,12 +1815,13 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                     zoom={selectedVehicle ? 14 : 8}
                     style={{ height: '100%', width: '100%', zIndex: 1 }}
                     zoomControl={false}
+                    doubleClickZoom={!drawMode}
                 >
                     <TileLayer
                         url={
                             mapTile === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' :
                                 theme === 'dark' ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' :
-                                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                                    'https://{s}.basemaps.cartocdn.com/voyager_all/{z}/{x}/{y}{r}.png'
                         }
                         attribution='&copy; OpenStreetMap &copy; CARTO'
                     />
@@ -2401,8 +2403,8 @@ export default function App() {
                                 bg: def.bg,
                                 border: def.border,
                                 title: def.label,
-                                message: `Vehicle "${v.name}" ${newIgnition ? 'ignition switched ON' : 'ignition switched OFF'}.`,
-                                vehicle: { name: v.name, imei: v.id, plate: v.plate || 'N/A' },
+                                message: `Vehicle "${v.name}" (Plate: ${v.plate_number || 'N/A'}, IMEI: ${v.id}) - ${newIgnition ? 'Ignition switched ON' : 'Ignition switched OFF'}.`,
+                                vehicle: { name: v.name, imei: v.id, plate: v.plate_number || 'N/A' },
                                 coords: `${parseFloat(msg.lat).toFixed(5)}, ${parseFloat(msg.lng).toFixed(5)}`,
                             });
                         }
@@ -2418,8 +2420,8 @@ export default function App() {
                                 bg: def.bg,
                                 border: def.border,
                                 title: def.label,
-                                message: `Vehicle "${v.name}" is speeding at ${msg.speed} km/h (limit: ${speedLimit} km/h).`,
-                                vehicle: { name: v.name, imei: v.id, plate: v.plate || 'N/A' },
+                                message: `OVERSPEED: Vehicle "${v.name}" (Plate: ${v.plate_number || 'N/A'}, IMEI: ${v.id}) is speeding at ${msg.speed} km/h (limit: ${speedLimit} km/h).`,
+                                vehicle: { name: v.name, imei: v.id, plate: v.plate_number || 'N/A' },
                                 coords: `${parseFloat(msg.lat).toFixed(5)}, ${parseFloat(msg.lng).toFixed(5)}`,
                             });
                         }
@@ -2441,9 +2443,13 @@ export default function App() {
                 border: def.border,
                 title: def.label,
                 message: alert.message || `Alert triggered for IMEI ${alert.imei}.`,
-                vehicle: { name: alert.vehicleName || alert.imei, imei: alert.imei, plate: alert.plate || 'N/A' },
+                vehicle: {
+                    name: alert.vehicleName || alert.imei,
+                    imei: alert.imei,
+                    plate: alert.plateNumber || alert.plate || 'N/A'
+                },
                 coords: alert.lat && alert.lng ? `${parseFloat(alert.lat).toFixed(5)}, ${parseFloat(alert.lng).toFixed(5)}` : 'N/A',
-                geofenceName: alert.geofenceName || null,
+                geofenceName: alert.geofenceName || alert.fenceName || null,
             });
         });
         socket.on('disconnect', () => setWsStatus('disconnected'));

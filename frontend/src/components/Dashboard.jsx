@@ -298,23 +298,23 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
         }
     };
 
-    const handleUpdateClient = async (userId, data) => {
+    const handleUpdateBilling = async (userId, billingData) => {
         try {
-            const req = await fetch(`${API_BASE}/api/admin/clients/update`, {
-                method: 'POST',
+            const req = await fetch(`${API_BASE}/api/admin/clients/${userId}/billing`, {
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, ...data })
+                body: JSON.stringify(billingData)
             });
             const res = await req.json();
             if (res.status === 'SUCCESS') {
-                alert('User details updated successfully.');
+                alert('Billing information updated successfully.');
                 fetchAdminData();
             } else {
-                alert(res.message || 'Update failed.');
+                alert(res.message || 'Billing update failed.');
             }
         } catch (err) {
-            console.error('Update Error:', err);
-            alert('Network error.');
+            console.error('Billing Update Error:', err);
+            alert('Network error during billing update.');
         }
     };
 
@@ -334,6 +334,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             handleToggleBlock={handleToggleBlock}
             handleRenew={handleRenew}
             handleUpdateClient={handleUpdateClient}
+            handleUpdateBilling={handleUpdateBilling}
             API_BASE={API_BASE}
         />;
     }
