@@ -177,6 +177,125 @@ io.on('connection', async (socket) => {
     });
 });
 
+// ===============================================================
+// REAL-TIME GPS ALERT ENGINE
+// Subscribes to Redis gps:updates (published by tcp-server)
+// Emits: LOCATION_UPDATE (live tracking) + GPS_ALERT (notifications)
+// ===============================================================
+const geofenceStateCache = {}; // { imei: { geofenceId: 'inside'|'outside', lastSpeed: N } }
+const SPEED_LIMIT_KMH = 80;
+
+function pointInPolygon(lat, lng, points) {
+    let inside = false;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const xi = points[i][1], yi = points[i][0];
+        const xj = points[j][1], yj = points[j][0];
+        if (((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+}
+
+function pointInCircle(lat, lng, cLat, cLng, radiusM) {
+    const R = 6371000, dLat = (lat - cLat) * Math.PI / 180, dLng = (lng - cLng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(cLat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) <= radiusM;
+}
+
+function emitAlert(imei, payload) {
+    io.to(`imei_${imei}`).emit('GPS_ALERT', payload);
+    io.to('admin_room').emit('GPS_ALERT', payload);
+    console.log(`[ALERT] ${payload.type} for ${imei}`);
+}
+
+const setupRedisAlertSubscriber = async () => {
+    try {
+        const redisSub = redis.createClient({
+            url: `redis://${process.env.REDIS_HOST || 'localhost'}:6379`,
+            socket: { reconnectStrategy: (r) => (r > 5 ? false : 1000) }
+        });
+        redisSub.on('error', (e) => console.error('[AlertSub] Redis:', e.message));
+        await redisSub.connect();
+
+        await redisSub.subscribe('gps:updates', async (rawMsg) => {
+            let msg;
+            try { msg = JSON.parse(rawMsg); } catch { return; }
+            const { imei, lat, lng, speed } = msg;
+            if (!imei || lat == null || lng == null) return;
+
+            const latN = parseFloat(lat), lngN = parseFloat(lng), speedN = parseFloat(speed) || 0;
+
+            // Look up vehicle info for rich messages
+            let vehicleName = imei, plateNumber = 'N/A', clientId = null;
+            try {
+                const vr = await pool.query(`
+                    SELECT v.vehicle_name, v.plate_number, v.client_id FROM vehicles v
+                    JOIN devices d ON d.id = v.device_id
+                    WHERE d.imei = $1 AND v.is_active = true LIMIT 1`, [imei]);
+                if (vr.rows.length > 0) {
+                    vehicleName = vr.rows[0].vehicle_name || imei;
+                    plateNumber = vr.rows[0].plate_number || 'N/A';
+                    clientId = vr.rows[0].client_id;
+                }
+            } catch { /* continue */ }
+
+            // Forward LOCATION_UPDATE to socket rooms in real-time
+            const locPayload = { imei, lat: latN, lng: lngN, speed: speedN, heading: parseFloat(msg.heading) || 0, satellites: msg.satellites, gps_fixed: msg.gps_fixed };
+            io.to(`imei_${imei}`).emit('LOCATION_UPDATE', locPayload);
+            io.to('admin_room').emit('LOCATION_UPDATE', locPayload);
+
+            // Overspeed detection (transition-based)
+            if (!geofenceStateCache[imei]) geofenceStateCache[imei] = { lastSpeed: 0 };
+            const prevSpeed = geofenceStateCache[imei].lastSpeed || 0;
+            if (speedN > SPEED_LIMIT_KMH && prevSpeed <= SPEED_LIMIT_KMH) {
+                emitAlert(imei, {
+                    type: 'OVERSPEED', imei, vehicleName, plate: plateNumber, lat: latN, lng: lngN,
+                    message: `Vehicle "${vehicleName}" (${plateNumber}) overspeeding at ${Math.round(speedN)} km/h. Limit: ${SPEED_LIMIT_KMH} km/h. IMEI: ${imei}. Location: ${latN.toFixed(5)}, ${lngN.toFixed(5)}.`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
+            geofenceStateCache[imei].lastSpeed = speedN;
+
+            // Geofence crossing detection
+            try {
+                const geoRes = await pool.query(
+                    `SELECT id, name, shape_type, coordinates, radius FROM geofences WHERE is_active = true AND (client_id = $1 OR client_id IS NULL)`,
+                    [clientId]
+                );
+                for (const geo of geoRes.rows) {
+                    let isInside = false;
+                    try {
+                        const coords = typeof geo.coordinates === 'string' ? JSON.parse(geo.coordinates) : geo.coordinates;
+                        if (geo.shape_type === 'circle' && coords && coords.center) {
+                            isInside = pointInCircle(latN, lngN, coords.center[0], coords.center[1], geo.radius || 100);
+                        } else if (Array.isArray(coords) && coords.length >= 3) {
+                            isInside = pointInPolygon(latN, lngN, coords);
+                        }
+                    } catch { continue; }
+
+                    const prevState = geofenceStateCache[imei][geo.id] || 'outside';
+                    const currState = isInside ? 'inside' : 'outside';
+                    if (prevState !== currState) {
+                        geofenceStateCache[imei][geo.id] = currState;
+                        const isEntry = currState === 'inside';
+                        emitAlert(imei, {
+                            type: isEntry ? 'GEOFENCE_ENTER' : 'GEOFENCE_EXIT',
+                            imei, vehicleName, plate: plateNumber, lat: latN, lng: lngN,
+                            geofenceName: geo.name,
+                            message: `Vehicle "${vehicleName}" (Plate: ${plateNumber}, IMEI: ${imei}) has ${isEntry ? 'ENTERED' : 'EXITED'} geofence zone "${geo.name}". Location: ${latN.toFixed(5)}, ${lngN.toFixed(5)}.`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                }
+            } catch { /* geofence check failed */ }
+        });
+        console.log('[AlertSub] GPS Alert Engine active — subscribed to gps:updates');
+    } catch (e) {
+        console.error('[AlertSub] Could not start GPS Alert Engine:', e.message);
+    }
+};
+
+setTimeout(setupRedisAlertSubscriber, 3000); // Start after Redis is ready
+
 // Basic Health Endpoint
 app.get('/api/v1/health', (req, res) => {
     res.json({ status: 'OK', message: 'SaaS Platform Backend is running.' });
