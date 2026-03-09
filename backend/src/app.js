@@ -399,7 +399,6 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ status: 'ERROR', message: 'Internal server error.' });
     }
 });
-});
 
 // 1.7. Password Reset Endpoint (for logged-in users)
 app.post('/api/reset-password', async (req, res) => {
