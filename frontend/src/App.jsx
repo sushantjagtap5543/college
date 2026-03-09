@@ -1621,11 +1621,11 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
     );
 
     return (
-        <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden font-sans text-slate-800 bg-[#e4e5e6] relative">
+        <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden font-sans text-slate-800 dark:text-slate-200 bg-[#e4e5e6] dark:bg-slate-950 relative">
             {/* Left Side Panel - GEOSUREPATH LIGHT THEME */}
-            <aside className="w-[340px] border-r border-slate-200 bg-white flex flex-col shrink-0 z-[100] shadow-md">
+            <aside className="w-[340px] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 z-[100] shadow-md">
                 {/* Search Bar */}
-                <div className="p-3 border-b border-slate-200 bg-slate-50">
+                <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <input
@@ -1633,13 +1633,13 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                             placeholder="Search"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-400 shadow-sm text-slate-800"
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-400 shadow-sm text-slate-800 dark:text-white"
                         />
                     </div>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex items-center px-4 py-3 border-b border-slate-200 bg-white">
+                <div className="flex items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                     {['Objects', 'Events', 'Geofences'].map(tab => (
                         <button
                             key={tab}
@@ -1653,18 +1653,18 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                 </div>
 
                 {/* Vehicle List */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 p-2">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-slate-800/30 p-2">
                     {activeTab === 'Objects' && filteredFleet.map((v) => (
                         <div
                             key={v.id}
                             onClick={() => handleVehicleSelect(v)}
-                            className={`flex items-center gap-3 p-3 mb-2 rounded bg-white shadow-sm border border-slate-100 cursor-pointer transition-all hover:border-blue-200 ${selectedVehicle?.id === v.id ? 'border-l-4 border-l-blue-500 shadow-md' : ''}`}
+                            className={`flex items-center gap-3 p-3 mb-2 rounded bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 cursor-pointer transition-all hover:border-blue-200 dark:hover:border-blue-500/50 ${selectedVehicle?.id === v.id ? 'border-l-4 border-l-blue-500 shadow-md dark:shadow-blue-900/20' : ''}`}
                         >
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${v.status === 'moving' ? 'bg-green-100 text-green-600' : v.status === 'idle' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
                                 <span className="text-sm">{VEHICLE_ICON_OPTIONS.find(opt => opt.id === (v.iconType || getVehicleIconPref(v.id)))?.emoji || '🚗'}</span>
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-sm text-slate-700 truncate">{v.name}</div>
+                                <div className="font-semibold text-sm text-slate-700 dark:text-white truncate">{v.name}</div>
                                 <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
                                     <span>{v.lastUpdate ? new Date(v.lastUpdate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Offline'}</span>
                                     {v.status === 'moving' && <span className="text-green-600 font-medium">{v.speed} km/h</span>}
@@ -1701,7 +1701,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                                 initial={{ opacity: 0, x: -10 }}
                                                 animate={{ opacity: 1, x: 0 }}
                                                 key={idx}
-                                                className={`p-3 rounded-xl border shadow-sm transition-all hover:shadow-md ${isExit ? 'bg-rose-50/50 border-rose-100' : isDeviation ? 'bg-amber-50/50 border-amber-100' : 'bg-blue-50/50 border-blue-100'}`}
+                                                className={`p-3 rounded-xl border shadow-sm transition-all hover:shadow-md ${isExit ? 'bg-rose-50/50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-900/50' : isDeviation ? 'bg-amber-50/50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/50' : 'bg-blue-50/50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800'}`}
                                             >
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <div className={`w-2 h-2 rounded-full ${isExit ? 'bg-rose-500 animate-pulse' : isDeviation ? 'bg-amber-500 animate-pulse' : 'bg-blue-500 animate-pulse'}`} />
@@ -1709,13 +1709,13 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                                         {isExit ? 'Boundary Exit' : isDeviation ? 'Route Deviation' : 'Boundary Entry'}
                                                     </span>
                                                 </div>
-                                                <div className="font-bold text-slate-800 text-sm">{alert.vehicleName}</div>
+                                                <div className="font-bold text-slate-800 dark:text-white text-sm">{alert.vehicleName}</div>
                                                 <div className="text-xs text-slate-500 mt-1">
                                                     {isExit ? 'Left' : isDeviation ? 'Deviated via 100m from' : 'Entered'} geofence <span className="font-bold text-slate-700">{alert.fenceName}</span>
                                                 </div>
                                                 <div className="mt-2 flex justify-between items-center text-[9px] font-black uppercase text-slate-400 tracking-tighter">
                                                     <span>{new Date(alert.timestamp).toLocaleTimeString()}</span>
-                                                    <span className="bg-white/50 px-1.5 py-0.5 rounded border border-slate-100">{alert.imei.slice(-6)}</span>
+                                                    <span className="bg-white/50 dark:bg-slate-800/50 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-700">{alert.imei.slice(-6)}</span>
                                                 </div>
                                             </motion.div>
                                         );
@@ -1736,28 +1736,28 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                             <div className="grid grid-cols-4 gap-2 mb-4 shrink-0">
                                 <button
                                     onClick={() => setDrawMode(drawMode === 'circle' ? null : 'circle')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'circle' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'circle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                 >
                                     <div className="w-5 h-5 rounded-full border-2 border-current border-dashed"></div>
                                     Circle
                                 </button>
                                 <button
                                     onClick={() => setDrawMode(drawMode === 'rectangle' ? null : 'rectangle')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'rectangle' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'rectangle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                 >
                                     <div className="w-6 h-5 border-2 border-current border-dashed"></div>
                                     Rect
                                 </button>
                                 <button
                                     onClick={() => setDrawMode(drawMode === 'polygon' ? null : 'polygon')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'polygon' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'polygon' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                 >
                                     <Hexagon size={16} className="text-current" />
                                     Poly
                                 </button>
                                 <button
                                     onClick={() => setDrawMode(drawMode === 'route' ? null : 'route')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'route' ? 'bg-amber-50 border-amber-400 text-amber-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'route' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-400 text-amber-700 dark:text-amber-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                                 >
                                     <RouteIcon size={16} className="text-current" />
                                     Route
@@ -1765,7 +1765,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                             </div>
 
                             {drawMode && (
-                                <div className="text-[10px] bg-blue-50 text-blue-700 p-2 border border-blue-200 rounded mb-4 shrink-0">
+                                <div className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 p-2 border border-blue-200 dark:border-blue-800 rounded mb-4 shrink-0">
                                     <div className="font-bold">Instructions:</div>
                                     {drawMode === 'circle' && 'Click center, then click outer edge to set radius.'}
                                     {drawMode === 'rectangle' && 'Click one corner, then click opposite corner.'}
@@ -1783,11 +1783,11 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                     </div>
                                 ) : (
                                     geofences.map(gf => (
-                                        <div key={gf.id} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm flex items-center justify-between">
+                                        <div key={gf.id} className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 rounded bg-blue-50 flex items-center justify-center text-blue-500"><Hexagon size={16} /></div>
+                                                <div className="w-8 h-8 rounded bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 dark:text-blue-400"><Hexagon size={16} /></div>
                                                 <div>
-                                                    <div className="font-bold text-sm text-slate-700">{gf.name}</div>
+                                                    <div className="font-bold text-sm text-slate-700 dark:text-white">{gf.name}</div>
                                                     <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{gf.fence_type}</div>
                                                 </div>
                                             </div>
@@ -1932,7 +1932,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                         className="absolute bottom-6 left-6 w-[340px] z-[500]"
                     >
-                        <div className="bg-white rounded shadow-lg border border-slate-200 overflow-hidden text-sm">
+                        <div className="bg-white dark:bg-slate-900 rounded shadow-lg border border-slate-200 dark:border-slate-800 overflow-hidden text-sm">
                             <div className="bg-[#39569c] text-white p-3 flex justify-between items-center">
                                 <div className="font-semibold flex items-center gap-2">
                                     <Car size={16} /> {selectedVehicle.name}
@@ -1943,53 +1943,53 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                             <div className="p-0">
                                 <table className="w-full text-left border-collapse">
                                     <tbody>
-                                        <tr className="border-b border-slate-100">
-                                            <td className="p-2 bg-slate-50 w-1/3 flex items-center gap-2 text-slate-600 font-medium"><Activity size={14} /> Status</td>
-                                            <td className="p-2 font-semibold text-slate-800">
+                                        <tr className="border-b border-slate-100 dark:border-slate-800">
+                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 w-1/3 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Activity size={14} /> Status</td>
+                                            <td className="p-2 font-semibold text-slate-800 dark:text-white">
                                                 {selectedVehicle.status === 'moving' ? <span className="text-green-600">Running</span> :
                                                     selectedVehicle.status === 'idle' ? <span className="text-amber-500">Idle</span> :
                                                         <span className="text-red-500">Stop</span>}
                                             </td>
                                         </tr>
                                         <tr className="border-b border-slate-100">
-                                            <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><Gauge size={14} /> Speed</td>
+                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Gauge size={14} /> Speed</td>
                                             <td className="p-2 font-semibold text-blue-600">{selectedVehicle.speed} km/h</td>
                                         </tr>
                                         <tr className="border-b border-slate-100">
-                                            <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><Power size={14} /> Ignition</td>
+                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Power size={14} /> Ignition</td>
                                             <td className="p-2 font-semibold">
                                                 {selectedVehicle.ignition ? <span className="text-green-600">ON</span> : <span className="text-slate-500">OFF</span>}
                                             </td>
                                         </tr>
                                         <tr className="border-b border-slate-100">
-                                            <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><MapPin size={14} /> Location</td>
+                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><MapPin size={14} /> Location</td>
                                             <td className="p-2 text-xs text-slate-600">
                                                 {Number(selectedVehicle.lat).toFixed(5)}, {Number(selectedVehicle.lng).toFixed(5)}
                                             </td>
                                         </tr>
                                         <tr className="border-b border-slate-100">
-                                            <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><Smartphone size={14} /> Mobile</td>
+                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Smartphone size={14} /> Mobile</td>
                                             <td className="p-2 text-xs font-semibold text-slate-700">{selectedVehicle.phone || 'N/A'}</td>
                                         </tr>
                                         <tr>
-                                            <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium"><Hash size={14} /> IMEI</td>
+                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Hash size={14} /> IMEI</td>
                                             <td className="p-2 text-xs font-mono text-slate-500">{selectedVehicle.id}</td>
                                         </tr>
                                         {selectedVehicle.fuel !== undefined && (
-                                            <tr className="border-t border-slate-100">
-                                                <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium">⛽ Fuel</td>
+                                            <tr className="border-t border-slate-100 dark:border-slate-800">
+                                                <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">⛽ Fuel</td>
                                                 <td className="p-2 text-xs font-semibold text-emerald-600">{selectedVehicle.fuel}{selectedVehicle.fuel <= 100 ? '%' : ' L'}</td>
                                             </tr>
                                         )}
                                         {selectedVehicle.battery !== undefined && (
-                                            <tr className="border-t border-slate-100">
-                                                <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium">🔋 Battery</td>
+                                            <tr className="border-t border-slate-100 dark:border-slate-800">
+                                                <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">🔋 Battery</td>
                                                 <td className="p-2 text-xs font-semibold text-amber-600">{selectedVehicle.battery}V</td>
                                             </tr>
                                         )}
                                         {selectedVehicle.temp !== undefined && (
-                                            <tr className="border-t border-slate-100">
-                                                <td className="p-2 bg-slate-50 flex items-center gap-2 text-slate-600 font-medium">🌡️ Temp</td>
+                                            <tr className="border-t border-slate-100 dark:border-slate-800">
+                                                <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">🌡️ Temp</td>
                                                 <td className="p-2 text-xs font-semibold text-blue-600">{selectedVehicle.temp}°C</td>
                                             </tr>
                                         )}
@@ -1997,10 +1997,10 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                 </table>
                             </div>
 
-                            <div className="bg-slate-50 p-2 border-t border-slate-200 flex gap-2">
+                            <div className="bg-slate-50 dark:bg-slate-800 p-2 border-t border-slate-200 dark:border-slate-700 flex gap-2">
                                 <button
                                     onClick={() => setShowIconPicker(!showIconPicker)}
-                                    className="flex-1 bg-white border border-slate-300 hover:bg-slate-100 py-1.5 rounded text-slate-700 font-medium flex items-center justify-center gap-1 transition-colors"
+                                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 py-1.5 rounded text-slate-700 dark:text-slate-300 font-medium flex items-center justify-center gap-1 transition-colors"
                                     title="Change vehicle icon"
                                 >
                                     <Car size={14} /> Icon
@@ -2008,7 +2008,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                 <button
                                     onClick={handleFetchHistory}
                                     disabled={isHistoryLoading}
-                                    className="flex-1 bg-white border border-slate-300 hover:bg-slate-100 py-1.5 rounded text-slate-700 font-medium flex items-center justify-center gap-1 transition-colors disabled:opacity-60"
+                                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 py-1.5 rounded text-slate-700 dark:text-slate-300 font-medium flex items-center justify-center gap-1 transition-colors disabled:opacity-60"
                                 >
                                     {isHistoryLoading ? <RefreshCcw size={14} className="animate-spin" /> : <History size={14} />}
                                     {isHistoryLoading ? 'Loading...' : 'History'}
@@ -2030,10 +2030,10 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                         exit={{ opacity: 0, height: 0 }}
                                         className="border-t border-slate-200 overflow-hidden"
                                     >
-                                        <div className="p-3 bg-slate-50">
+                                        <div className="p-3 bg-slate-50 dark:bg-slate-800">
                                             {/* Header */}
                                             <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Vehicle Type</span>
+                                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Vehicle Type</span>
                                                 <button onClick={() => setShowIconPicker(false)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
                                             </div>
                                             {/* Icon Grid — 4 columns */}
@@ -2051,19 +2051,19 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                                             }}
                                                             className={`flex flex-col items-center py-1.5 px-1 rounded-lg border transition-all text-center ${isActive
                                                                 ? 'bg-blue-50 border-blue-400 shadow-sm ring-1 ring-blue-300'
-                                                                : 'bg-white border-slate-200 hover:border-blue-300 hover:bg-blue-50/50'
+                                                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-blue-300 hover:bg-blue-50/50 dark:hover:bg-blue-900/20'
                                                                 }`}
                                                             title={opt.label}
                                                         >
                                                             <span className="text-lg leading-none">{opt.emoji}</span>
-                                                            <span className="text-[9px] font-medium text-slate-500 leading-tight mt-0.5">{opt.label}</span>
+                                                            <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400 leading-tight mt-0.5">{opt.label}</span>
                                                         </button>
                                                     );
                                                 })}
                                             </div>
                                             {/* Color Swatches */}
-                                            <div className="mt-3 pt-2 border-t border-slate-200">
-                                                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5 block">Pin Color</span>
+                                            <div className="mt-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1.5 block">Pin Color</span>
                                                 <div className="flex flex-wrap gap-1.5">
                                                     {PIN_COLOR_OPTIONS.map(c => {
                                                         const currentColor = selectedVehicle?.color || getVehicleColorPref(selectedVehicle?.id) || '#10b981';
@@ -2098,7 +2098,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                 <div className="absolute top-3 left-3 z-[600] flex gap-2">
                     <button
                         onClick={() => setMapTile(mapTile === 'satellite' ? 'street' : 'satellite')}
-                        className="bg-white/90 backdrop-blur-sm border border-slate-200 text-slate-700 px-3 py-1.5 rounded-md text-[10px] font-bold shadow-sm hover:bg-white transition-all flex items-center gap-1.5"
+                        className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-md text-[10px] font-bold shadow-sm hover:bg-white dark:hover:bg-slate-800 transition-all flex items-center gap-1.5"
                     >
                         <MapPin size={12} />
                         {mapTile === 'satellite' ? '🛣️ Street' : '🛰️ Satellite'}
@@ -2107,7 +2107,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
                 {/* History Date Range + Player Bar */}
                 {historyMode ? (
-                    <div className="absolute top-4 right-4 z-[600] bg-white rounded shadow-md border border-slate-200 p-4 flex flex-col gap-3 min-w-[320px]">
+                    <div className="absolute top-4 right-4 z-[600] bg-white dark:bg-slate-900 rounded shadow-md border border-slate-200 dark:border-slate-800 p-4 flex flex-col gap-3 min-w-[320px]">
                         <div className="flex justify-between items-center">
                             <span className="text-xs font-semibold text-slate-700">History Playback</span>
                             <button onClick={() => { setHistoryMode(false); setHistoryData([]); }} className="text-slate-400 hover:text-red-500 transition"><X size={16} /></button>
@@ -2119,7 +2119,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                             <div className="flex flex-col flex-1">
                                 <div className="flex justify-between items-center text-[10px] text-slate-600 mb-2">
                                     <div className="flex flex-col">
-                                        <span className="font-black text-slate-900 uppercase tracking-tighter">
+                                        <span className="font-black text-slate-900 dark:text-white uppercase tracking-tighter">
                                             {historyData[historyIndex] ? new Date(historyData[historyIndex].timestamp).toLocaleTimeString() : '--:--:--'}
                                         </span>
                                         <span className="text-[9px] text-slate-400 font-bold">
@@ -2143,7 +2143,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                             </div>
                             <select
                                 value={playbackSpeed} onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-                                className="text-xs border border-slate-300 rounded p-1 outline-none"
+                                className="text-xs border border-slate-300 dark:border-slate-700 rounded p-1 outline-none bg-white dark:bg-slate-800 text-slate-700 dark:text-white"
                             >
                                 <option value="1">1x</option>
                                 <option value="2">2x</option>
@@ -2154,19 +2154,19 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                 ) : (
                     /* History date range controls (visible when vehicle selected but not in history mode) */
                     selectedVehicle && (
-                        <div className="absolute top-3 right-3 z-[600] bg-white/90 backdrop-blur-sm border border-slate-200 rounded-md shadow-sm p-2 flex gap-2 items-center">
+                        <div className="absolute top-3 right-3 z-[600] bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border border-slate-200 dark:border-slate-800 rounded-md shadow-sm p-2 flex gap-2 items-center">
                             <input
                                 type="datetime-local"
                                 value={historyRange.from}
                                 onChange={e => setHistoryRange(r => ({ ...r, from: e.target.value }))}
-                                className="text-[10px] border border-slate-200 rounded px-2 py-1 outline-none text-slate-700 bg-white"
+                                className="text-[10px] border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800"
                             />
                             <span className="text-[10px] text-slate-400">→</span>
                             <input
                                 type="datetime-local"
                                 value={historyRange.to}
                                 onChange={e => setHistoryRange(r => ({ ...r, to: e.target.value }))}
-                                className="text-[10px] border border-slate-200 rounded px-2 py-1 outline-none text-slate-700 bg-white"
+                                className="text-[10px] border border-slate-200 dark:border-slate-700 rounded px-2 py-1 outline-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800"
                             />
                         </div>
                     )
@@ -2181,7 +2181,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                         >
                             <motion.div
                                 initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                                className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-[340px] overflow-hidden"
+                                className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-[340px] overflow-hidden"
                             >
                                 {/* Header */}
                                 <div className={`p-5 text-white flex items-center gap-3 ${selectedVehicle?.ignition ? 'bg-gradient-to-r from-red-600 to-rose-500' : 'bg-gradient-to-r from-emerald-600 to-green-500'
@@ -2198,7 +2198,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                 </div>
 
                                 {/* Vehicle info strip */}
-                                <div className="bg-slate-50 border-b border-slate-100 px-5 py-3 flex items-center gap-2">
+                                <div className="bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700 px-5 py-3 flex items-center gap-2">
                                     <Car size={14} className="text-slate-400" />
                                     <span className="text-xs font-semibold text-slate-600">{selectedVehicle?.name}</span>
                                     <span className="ml-auto text-[10px] font-mono text-slate-400">{selectedVehicle?.id}</span>
@@ -2206,7 +2206,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
                                 {/* Form */}
                                 <form onSubmit={handleExecuteCommand} className="p-5 space-y-4">
-                                    <div className="text-sm text-slate-600 leading-relaxed">
+                                    <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                                         This action will&nbsp;
                                         <span className={`font-bold ${selectedVehicle?.ignition ? 'text-red-600' : 'text-emerald-600'
                                             }`}>
@@ -2230,7 +2230,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                             value={pinCode}
                                             onChange={(e) => setPinCode(e.target.value)}
                                             placeholder="••••"
-                                            className="w-full text-center tracking-[0.8em] py-3 px-4 border-2 border-slate-300 rounded-xl font-mono font-black text-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-slate-800 bg-slate-50"
+                                            className="w-full text-center tracking-[0.8em] py-3 px-4 border-2 border-slate-300 dark:border-slate-700 rounded-xl font-mono font-black text-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-slate-800 dark:text-white bg-slate-50 dark:bg-slate-800"
                                         />
                                     </div>
 
@@ -2238,7 +2238,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                         <button
                                             type="button"
                                             onClick={() => setShowPinModal(false)}
-                                            className="flex-1 px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl font-semibold text-sm transition-colors border border-slate-200"
+                                            className="flex-1 px-4 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl font-semibold text-sm transition-colors border border-slate-200 dark:border-slate-700"
                                         >
                                             Cancel
                                         </button>
@@ -2481,8 +2481,8 @@ export default function App() {
                                 >
                                     <div
                                         className={`rounded-2xl border-2 shadow-2xl overflow-hidden ${isSerious
-                                                ? 'animate-pulse-border'
-                                                : ''
+                                            ? 'animate-pulse-border'
+                                            : ''
                                             }`}
                                         style={{
                                             background: toast.bg || '#fff',

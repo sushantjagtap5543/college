@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 
 export default function Reports({ fleet = [] }) {
-    const [setError] = useState(null); // Added for error handling
+    const [error, setError] = useState(null);
     const [reportType, setReportType] = useState('summary');
     const [selectedDevice, setSelectedDevice] = useState('All Devices');
     const [expandedRow, setExpandedRow] = useState(null);
@@ -163,9 +163,9 @@ export default function Reports({ fleet = [] }) {
     const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'];
 
     return (
-        <div className="h-full flex flex-col bg-slate-100 overflow-hidden font-sans text-slate-800">
+        <div className="h-full flex flex-col bg-slate-100 dark:bg-slate-950 overflow-hidden font-sans text-slate-800 dark:text-slate-200">
             {/* Reports Header & Form */}
-            <div className="bg-white border-b border-slate-200 p-6 shrink-0 z-10 shadow-sm relative">
+            <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-6 shrink-0 z-10 shadow-sm relative">
                 <div className="flex items-center gap-3 mb-6">
                     <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
                         <FileText size={24} />

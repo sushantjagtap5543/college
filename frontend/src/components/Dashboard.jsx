@@ -384,14 +384,14 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                     <motion.div
                         initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
                         key={i}
-                        className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 group hover:border-slate-300 transition-all"
+                        className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-5 group hover:border-slate-300 dark:hover:border-slate-700 transition-all"
                     >
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-slate-50 text-slate-600 group-hover:bg-slate-900 group-hover:text-white transition-all">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-slate-900 dark:group-hover:bg-white group-hover:text-white dark:group-hover:text-slate-900 transition-all">
                             <kpi.icon size={18} />
                         </div>
                         <div className="text-slate-500 text-[11px] font-bold uppercase tracking-tight mb-1">{kpi.label}</div>
                         <div className="flex items-baseline justify-between">
-                            <div className="text-slate-950 font-black text-lg tracking-tight">{kpi.value}</div>
+                            <div className="text-slate-950 dark:text-white font-black text-lg tracking-tight">{kpi.value}</div>
                             {kpi.trend && (
                                 <span className={`text-[10px] font-black ${kpi.trend.startsWith('+') ? 'text-emerald-500' : kpi.trend.startsWith('-') ? 'text-rose-500' : 'text-slate-400'}`}>
                                     {kpi.trend}
@@ -405,7 +405,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             {/* Central Intelligence Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
                 {/* Live Geo-Spatial Pulse */}
-                <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-200 p-2 flex flex-col overflow-hidden group">
+                <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-2 flex flex-col overflow-hidden group">
                     <div className="h-full min-h-[450px] relative rounded-[22px] overflow-hidden">
                         <MapContainer
                             center={fleet.find(v => v.lat && v.lng)
@@ -440,7 +440,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                         </div>
 
                         <div className="absolute bottom-4 right-4 z-[1000]">
-                            <button onClick={() => window.location.href = '/live'} className="bg-white text-slate-900 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-2xl border border-slate-200 hover:-translate-y-1 transition-all">
+                            <button onClick={() => window.location.href = '/live'} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-2xl border border-slate-200 dark:border-slate-700 hover:-translate-y-1 transition-all">
                                 Expand Tactical Map
                             </button>
                         </div>
@@ -450,9 +450,9 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                 {/* Right Panel: Utilization & Health */}
                 <div className="space-y-8">
                     {/* Utilization Chart Card */}
-                    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-6">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Fleet Utilization</h3>
+                            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Fleet Utilization</h3>
                             <div className="w-2 h-2 rounded-full bg-blue-500" />
                         </div>
                         <div className="h-[180px] w-full">
@@ -474,9 +474,9 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                     </div>
 
                     {/* Operational Alerts Stack */}
-                    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 flex-1">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 flex-1">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Security Pulse</h3>
+                            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Security Pulse</h3>
                             <span className="text-[10px] font-black text-rose-500 px-2 py-0.5 bg-rose-50 rounded-lg">Critical Alert</span>
                         </div>
                         <div className="space-y-4">
@@ -485,10 +485,10 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                                 { title: 'Ignition Cycle', dev: 'Van 02', time: '14m ago', color: 'emerald' },
                                 { title: 'Manual SOS', dev: 'Car 09', time: '1h ago', color: 'rose' }
                             ].map((alert, i) => (
-                                <div key={i} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
+                                <div key={i} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
                                     <div className={`w-2 h-10 rounded-full ${alert.color === 'rose' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                                     <div className="flex-1">
-                                        <div className="text-xs font-black text-slate-900">{alert.title}</div>
+                                        <div className="text-xs font-black text-slate-900 dark:text-white">{alert.title}</div>
                                         <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-1">{alert.dev} • {alert.time}</div>
                                     </div>
                                     <ArrowRight size={14} className="text-slate-300" />
@@ -500,15 +500,15 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             </div>
 
             {/* Managed Assets List - Executive View */}
-            <div className="bg-white rounded-[32px] shadow-sm border border-slate-200 p-8">
+            <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-sm border border-slate-200 dark:border-slate-800 p-8">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
                     <div>
-                        <h3 className="text-xl font-black text-slate-900">Registered Assets</h3>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-white">Registered Assets</h3>
                         <p className="text-slate-400 font-medium text-xs">Manage lifecycle and telemetry for your connected hardware</p>
                     </div>
                     <button
                         onClick={() => setIsClientAdding(!isClientAdding)}
-                        className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:-translate-y-1 transition-all flex items-center gap-3"
+                        className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:-translate-y-1 transition-all flex items-center gap-3"
                     >
                         {isClientAdding ? <X size={16} /> : <Plus size={16} />}
                         {isClientAdding ? 'Close Panel' : 'Provision Asset'}
@@ -518,18 +518,18 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                 <AnimatePresence>
                     {isClientAdding && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="mb-10 overflow-hidden">
-                            <form onSubmit={handleClientAddVehicle} className="bg-slate-50 p-8 rounded-3xl border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                            <form onSubmit={handleClientAddVehicle} className="bg-slate-50 dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700 grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
                                 <div>
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-1">IMEI Identification</label>
-                                    <input required value={clientVehicleForm.imei} onChange={e => setClientVehicleForm({ ...clientVehicleForm, imei: e.target.value })} className="w-full bg-white px-5 py-4 rounded-2xl border border-slate-200 font-bold text-sm outline-none focus:border-emerald-500" placeholder="15 Digit IMEI" />
+                                    <input required value={clientVehicleForm.imei} onChange={e => setClientVehicleForm({ ...clientVehicleForm, imei: e.target.value })} className="w-full bg-white dark:bg-slate-900 px-5 py-4 rounded-2xl border border-slate-200 dark:border-slate-700 font-bold text-sm outline-none focus:border-emerald-500" placeholder="15 Digit IMEI" />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-1">Asset Alias</label>
-                                    <input required value={clientVehicleForm.vehicleName} onChange={e => setClientVehicleForm({ ...clientVehicleForm, vehicleName: e.target.value })} className="w-full bg-white px-5 py-4 rounded-2xl border border-slate-200 font-bold text-sm outline-none focus:border-emerald-500" placeholder="e.g. Service Van 01" />
+                                    <input required value={clientVehicleForm.vehicleName} onChange={e => setClientVehicleForm({ ...clientVehicleForm, vehicleName: e.target.value })} className="w-full bg-white dark:bg-slate-900 px-5 py-4 rounded-2xl border border-slate-200 dark:border-slate-700 font-bold text-sm outline-none focus:border-emerald-500" placeholder="e.g. Service Van 01" />
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-1">Regulatory Plate</label>
-                                    <input required value={clientVehicleForm.plateNumber} onChange={e => setClientVehicleForm({ ...clientVehicleForm, plateNumber: e.target.value })} className="w-full bg-white px-5 py-4 rounded-2xl border border-slate-200 font-bold text-sm outline-none focus:border-emerald-500" placeholder="Plate Number" />
+                                    <input required value={clientVehicleForm.plateNumber} onChange={e => setClientVehicleForm({ ...clientVehicleForm, plateNumber: e.target.value })} className="w-full bg-white dark:bg-slate-900 px-5 py-4 rounded-2xl border border-slate-200 dark:border-slate-700 font-bold text-sm outline-none focus:border-emerald-500" placeholder="Plate Number" />
                                 </div>
                                 <button type="submit" className="w-full bg-emerald-500 text-black py-4 rounded-2xl font-black uppercase tracking-widest text-[10px]">Secure & Provision</button>
                             </form>
@@ -542,52 +542,52 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                         <motion.div
                             whileHover={{ y: -5 }}
                             key={v.id}
-                            className="bg-white rounded-[32px] border border-slate-100 p-6 shadow-sm hover:shadow-xl hover:border-emerald-500/20 transition-all group relative overflow-hidden"
+                            className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 p-6 shadow-sm hover:shadow-xl hover:border-emerald-500/20 dark:hover:border-emerald-500/40 transition-all group relative overflow-hidden"
                         >
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 opacity-50 group-hover:bg-emerald-50 transition-colors" />
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 dark:bg-slate-800 rounded-full -mr-16 -mt-16 opacity-50 group-hover:bg-emerald-50 dark:group-hover:bg-emerald-900/20 transition-colors" />
 
                             <div className="relative flex justify-between items-start mb-6">
                                 <div className="flex items-center gap-4">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-inner ${v.status === 'moving' ? 'bg-emerald-50 text-emerald-600' :
-                                        v.status === 'idle' ? 'bg-amber-50 text-amber-600' :
-                                            'bg-slate-50 text-slate-400'
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-inner ${v.status === 'moving' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' :
+                                        v.status === 'idle' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' :
+                                            'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
                                         }`}>
                                         {VEHICLE_ICON_OPTIONS.find(o => o.id === (v.iconType || 'car'))?.emoji || '🚗'}
                                     </div>
                                     <div>
-                                        <div className="text-base font-black text-slate-900 leading-tight">{v.name}</div>
+                                        <div className="text-base font-black text-slate-900 dark:text-white leading-tight">{v.name}</div>
                                         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">IMEI: {v.id}</div>
                                     </div>
                                 </div>
-                                <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'moving' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200' :
-                                    v.status === 'idle' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' :
-                                        'bg-slate-200 text-slate-600'
+                                <div className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'moving' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-200 dark:shadow-emerald-900/40' :
+                                    v.status === 'idle' ? 'bg-amber-500 text-white shadow-lg shadow-amber-200 dark:shadow-amber-900/40' :
+                                        'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                                     }`}>
                                     {v.status || 'Offline'}
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4 mb-8">
-                                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100/50">
+                                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800/50">
                                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Velocity</div>
-                                    <div className="text-xl font-bold text-slate-900">{v.speed || 0} <span className="text-xs font-medium opacity-40">KM/H</span></div>
+                                    <div className="text-xl font-bold text-slate-900 dark:text-white">{v.speed || 0} <span className="text-xs font-medium opacity-40">KM/H</span></div>
                                 </div>
-                                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100/50">
+                                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800/50">
                                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Heading</div>
-                                    <div className="text-xl font-bold text-slate-900">{v.heading || 0}° <span className="text-xs font-medium opacity-40">DEG</span></div>
+                                    <div className="text-xl font-bold text-slate-900 dark:text-white">{v.heading || 0}° <span className="text-xs font-medium opacity-40">DEG</span></div>
                                 </div>
                             </div>
 
                             <div className="flex gap-2 relative">
                                 <button
                                     onClick={() => window.location.href = '/live'}
-                                    className="flex-1 bg-slate-900 text-white py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:-translate-y-1 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                    className="flex-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:-translate-y-1 active:scale-95 transition-all flex items-center justify-center gap-2"
                                 >
                                     <MapPin size={12} /> Live Trace
                                 </button>
                                 <button
                                     onClick={() => handleRemoveVehicle(v.vehicle_id || v.id)}
-                                    className="p-3.5 rounded-2xl bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white transition-all active:scale-90"
+                                    className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-900/20 text-rose-500 hover:bg-rose-500 dark:hover:bg-rose-600 hover:text-white transition-all active:scale-90"
                                 >
                                     <StopCircle size={16} />
                                 </button>
@@ -595,7 +595,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
                         </motion.div>
                     ))}
                     {fleet.length === 0 && (
-                        <div className="col-span-full py-24 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 gap-4">
+                        <div className="col-span-full py-24 bg-slate-50 dark:bg-slate-900/50 rounded-[40px] border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-slate-400 gap-4">
                             <Activity size={48} className="opacity-20 animate-pulse" />
                             <div className="text-sm font-black uppercase tracking-[0.2em] opacity-50">Operational Stasis • No Assets Detected</div>
                         </div>

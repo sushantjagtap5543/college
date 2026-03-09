@@ -78,7 +78,7 @@ export default function Layout({ children, user, onLogout }) {
     };
 
     return (
-        <div className="flex h-screen w-full bg-[#f3f4f6] overflow-hidden text-slate-800 font-sans selection:bg-blue-500 selection:text-white">
+        <div className="flex h-screen w-full bg-[#f3f4f6] dark:bg-[#0f172a] overflow-hidden text-slate-800 dark:text-slate-200 font-sans selection:bg-blue-500 selection:text-white">
             {/* Sidebar Navigation - GeoSurePath Classic Navy */}
             <aside className="w-[80px] bg-[#1a233a] h-full flex flex-col items-center py-6 z-[100] shadow-xl border-r border-[#2a344a] relative shrink-0">
                 {/* Logo */}
@@ -140,7 +140,7 @@ export default function Layout({ children, user, onLogout }) {
             </aside>
 
             {/* Main Content Area */}
-            <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#f3f4f6]">
+            <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#f3f4f6] dark:bg-[#0f172a]">
                 {/* GeoSurePath Classic Header */}
                 <header className="h-16 bg-[#1a233a] text-white flex items-center justify-between px-6 z-[90] shrink-0 shadow-lg border-b border-white/5">
                     <div className="flex items-center gap-6">
