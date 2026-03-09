@@ -1381,26 +1381,6 @@ const SimpleTracker = ({ fleet, mapTile, theme, setMapTile, setTheme, user }) =>
             setTimeout(() => setCurrentAlert(null), 6000);
         });
 
-        // Generate mock alerts on load for visual testing
-        if (alertHistory.length === 0) {
-            setAlertHistory([
-                {
-                    type: 'GEOFENCE_ENTER',
-                    imei: '869727079043558',
-                    vehicleName: 'Demo Truck (869727079043558)',
-                    fenceName: 'Main Campus',
-                    timestamp: new Date().toISOString()
-                },
-                {
-                    type: 'ROUTE_DEVIATION',
-                    imei: '869727079043556',
-                    vehicleName: 'Active Van (869727079043556)',
-                    fenceName: 'Delivery Route A',
-                    timestamp: new Date(Date.now() - 300000).toISOString()
-                }
-            ]);
-        }
-
         return () => socket.disconnect();
     }, [fleet, user, alertHistory.length]);
 
@@ -2302,21 +2282,11 @@ export default function App() {
                         return;
                     }
                 }
-
-                // Fallback to Demo Data for "Hassle-Free" experience
-                const demoFleet = [
-                    { id: '869727079043558', name: 'Live Tracker (869727079043558)', phone: '+1234567890', type: 'car', status: 'moving', speed: 45, lat: 21.1458, lng: 79.0882, ignition: true, color: '#10b981', fuel: 85, battery: 12.4, temp: 24, lastUpdate: Date.now() },
-                    { id: 'DEMO02', name: 'Heavy Truck B', phone: '+1987654321', type: 'truck', status: 'idle', speed: 0, lat: 21.1500, lng: 79.1000, ignition: true, color: '#f59e0b', fuel: 32, battery: 24.1, lastUpdate: Date.now() - 300000 },
-                    { id: 'DEMO03', name: 'Mini Van A', phone: '+1122334455', type: 'van', status: 'alert', speed: 12, lat: 21.1400, lng: 79.0700, ignition: true, color: '#ef4444', fuel: 12, battery: 11.8, temp: 31, lastUpdate: Date.now() - 60000 }
-                ];
-                setFleet(demoFleet);
+                // If Traccar returned no devices, keep fleet empty
+                setFleet([]);
             } catch (err) {
-                console.warn('Fleet fetch failed, using demo data');
-                setFleet([
-                    { id: '869727079043558', name: 'Live Tracker (869727079043558)', phone: '+1234567890', type: 'car', status: 'moving', speed: 45, lat: 21.1458, lng: 79.0882, ignition: true, color: '#10b981', lastUpdate: Date.now() },
-                    { id: 'DEMO02', name: 'Heavy Truck B', phone: '+1987654321', type: 'truck', status: 'idle', speed: 0, lat: 21.1500, lng: 79.1000, ignition: false, color: '#f59e0b', lastUpdate: Date.now() - 300000 },
-                    { id: 'DEMO03', name: 'Mini Van A', phone: '+1122334455', type: 'van', status: 'alert', speed: 12, lat: 21.1400, lng: 79.0700, ignition: true, color: '#ef4444', lastUpdate: Date.now() - 60000 }
-                ]);
+                console.warn('Fleet fetch failed, using live data only');
+                setFleet([]);
             }
         };
 

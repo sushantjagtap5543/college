@@ -85,7 +85,7 @@ export default function Reports() {
                 const metrics = calculateMetrics(data.points);
                 setReports([{
                     id: Date.now(),
-                    vehicle: selectedDevice === 'All Devices' ? 'Demo Truck' : `Device ${selectedDevice}`,
+                    vehicle: selectedDevice === 'All Devices' ? 'All Devices' : selectedDevice,
                     date: dateRange.from.split('T')[0],
                     points: data.points || [],
                     ...metrics,
@@ -95,24 +95,8 @@ export default function Reports() {
             }
             throw new Error('Data format error');
         } catch (err) {
-            console.warn('Report generation using mock data (API unavailable)', err);
-            // Fallback mock data
-            const mockPoints = Array.from({ length: 50 }, (_, i) => ({
-                timestamp: new Date(new Date(dateRange.from).getTime() + i * 15 * 60000).toISOString(),
-                speed: Math.random() > 0.8 ? 0 : Math.floor(Math.random() * 80 + 20),
-                lat: 21.1458 + (Math.random() - 0.5) * 0.1,
-                lng: 79.0882 + (Math.random() - 0.5) * 0.1,
-                ignition: Math.random() > 0.1
-            }));
-            const metrics = calculateMetrics(mockPoints);
-            setReports([{
-                id: Date.now(),
-                vehicle: selectedDevice === 'All Devices' ? 'Demo Truck' : `Device ${selectedDevice}`,
-                date: dateRange.from.split('T')[0],
-                points: mockPoints,
-                ...metrics,
-                trips: 4
-            }]);
+            console.warn('Report generation failed (API unavailable)', err);
+            setReports([]);
         } finally {
             setLoading(false);
         }
@@ -185,8 +169,9 @@ export default function Reports() {
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-10 pr-4 text-sm font-bold text-slate-900 appearance-none focus:border-blue-500 outline-none"
                             >
                                 <option>All Devices</option>
-                                <option value="869727079043558">Demo Truck (869727079043558)</option>
-                                <option value="869727079043556">Active Van (869727079043556)</option>
+                                {(fleet || []).map(v => (
+                                    <option key={v.id} value={v.id}>{v.name} ({v.id})</option>
+                                ))}
                             </select>
                             <Car size={16} className="absolute left-3 top-3 text-slate-400 pointer-events-none" />
                         </div>
