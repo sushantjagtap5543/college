@@ -115,7 +115,7 @@ log "Services started successfully"
 
 # ── 8. Nginx Reverse Proxy (Optimized for WebSockets) ────────────────────────
 info "Configuring Nginx Reverse Proxy..."
-SERVER_IP=$(curl -s http://checkip.amazonaws.com || echo "3.108.114.12")
+SERVER_IP="3.108.114.12"
 
 cat > /etc/nginx/sites-available/gps-platform <<NGINXEOF
 server {

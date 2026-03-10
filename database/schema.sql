@@ -1,14 +1,15 @@
--- GEOSUREPATH - Master Database Schema V2
--- Optimized for GPRS Command Module & Traccar Integration
+-- GEOSUREPATH - Master Database Schema V3
+-- Consolidated for Real-time Tracking, GPRS Commands, and Alert Rules Engine.
 
--- Enable necessary extensions
+-- Enable necessary extensions for UUID and Geospatial support
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS postgis;
 
--- 1. Roles & Users (Preserving for Authentication)
+-- 1. Metadata: Roles & Users
 CREATE TABLE IF NOT EXISTS roles (
     id SERIAL PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL,
-    permissions JSONB DEFAULT '{}'
+    permissions JSONB DEFAULT '{"all": false}'
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -17,7 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
     name VARCHAR(100) NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    password_text VARCHAR(255),
+    password_text VARCHAR(255), -- for development/quick reference
     is_active BOOLEAN DEFAULT true,
     is_blocked BOOLEAN DEFAULT false,
     subscription_plan VARCHAR(50) DEFAULT 'basic',
@@ -26,106 +27,148 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Device Inventory (Stock / Master Registry)
+-- 2. Hardware Management
+CREATE TABLE IF NOT EXISTS device_models (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    brand VARCHAR(100),
+    protocol VARCHAR(50) DEFAULT 'gt06',
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS device_inventory (
     id SERIAL PRIMARY KEY,
     imei VARCHAR(50) UNIQUE NOT NULL,
-    protocol VARCHAR(50) DEFAULT 'gt06',
-    model VARCHAR(50),
+    serial_number VARCHAR(100),
     sim_number VARCHAR(20),
+    model_id INTEGER REFERENCES device_models(id),
     is_assigned BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Live Devices (Registered in Traccar)
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
-    imei VARCHAR(50) UNIQUE NOT NULL REFERENCES device_inventory(imei),
+    imei VARCHAR(50) UNIQUE NOT NULL REFERENCES device_inventory(imei) ON DELETE CASCADE,
     device_name VARCHAR(100),
-    protocol VARCHAR(50),
-    model VARCHAR(50),
+    model_id INTEGER REFERENCES device_models(id),
     sim_number VARCHAR(20),
-    vehicle_id INTEGER,
+    protocol VARCHAR(50),
+    speed_limit DECIMAL(5, 2) DEFAULT 80.00,
+    is_blocked BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Vehicles Table
+-- 3. Vehicle Assets
 CREATE TABLE IF NOT EXISTS vehicles (
     id SERIAL PRIMARY KEY,
     vehicle_number VARCHAR(50) UNIQUE NOT NULL,
     driver_name VARCHAR(100),
-    device_id INTEGER REFERENCES devices(id),
+    device_id INTEGER REFERENCES devices(id) ON DELETE SET NULL,
     client_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    is_active BOOLEAN DEFAULT true, -- Add is_active if missing
+    is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Command Templates Table (Optimized for Upserts)
+-- 4. GPRS Command Logic
 CREATE TABLE IF NOT EXISTS command_templates (
     id SERIAL PRIMARY KEY,
-    brand VARCHAR(100),
-    model VARCHAR(100),
     protocol VARCHAR(50),
-    action VARCHAR(50), -- IGNITION_OFF, IGNITION_ON
+    action VARCHAR(50), -- IGNITION_OFF, IGNITION_ON, SIREN_ON, etc.
     command_string VARCHAR(255),
     description TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (protocol, action)
 );
 
--- 5. Device Commands Table (Log) (As per USER_REQUEST)
 CREATE TABLE IF NOT EXISTS device_commands (
     id SERIAL PRIMARY KEY,
-    vehicle_id INTEGER REFERENCES vehicles(id),
-    device_id INTEGER REFERENCES devices(id),
+    vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+    device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
     action VARCHAR(50),
     command_sent VARCHAR(255),
     status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, SENT, DELIVERED, FAILED
     response TEXT,
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    user_id UUID REFERENCES users(id)
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
--- 6. GPS Live Data (For Map display)
+-- 5. Real-time Geospatial State
 CREATE TABLE IF NOT EXISTS gps_live_data (
-    imei VARCHAR(50) PRIMARY KEY REFERENCES devices(imei),
+    imei VARCHAR(50) PRIMARY KEY REFERENCES devices(imei) ON DELETE CASCADE,
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
     speed DECIMAL(5, 2) DEFAULT 0,
     heading SMALLINT DEFAULT 0,
     ignition BOOLEAN DEFAULT false,
-    last_update TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_update TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP -- for heartbeats
 );
 
--- Seed Initial Data
-INSERT INTO roles (name) VALUES ('ADMIN'), ('CLIENT') ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS gps_history (
+    id BIGSERIAL PRIMARY KEY,
+    device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+    latitude DECIMAL(10, 8) NOT NULL,
+    longitude DECIMAL(11, 8) NOT NULL,
+    speed DECIMAL(5, 2) DEFAULT 0,
+    heading SMALLINT DEFAULT 0,
+    ignition BOOLEAN DEFAULT false,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_gps_history_device_timestamp ON gps_history(device_id, timestamp);
+
+-- 6. Alerts & Geofences Engine
+CREATE TABLE IF NOT EXISTS geofences (
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    fence_type VARCHAR(20) DEFAULT 'polygon', -- polygon, circle
+    geom GEOMETRY(Geometry, 4326),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS alert_rules (
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    type VARCHAR(50), -- speed, geofence, ignition
+    conditions JSONB NOT NULL, -- e.g. {"limit": 100} or {"geofence_id": 1, "trigger": "exit"}
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id BIGSERIAL PRIMARY KEY,
+    device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+    rule_id INTEGER REFERENCES alert_rules(id) ON DELETE SET NULL,
+    message TEXT NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    is_read BOOLEAN DEFAULT false
+);
+
+-- SEED INITIAL DATA
+INSERT INTO roles (name, permissions) VALUES 
+('ADMIN', '{"all": true}'),
+('CLIENT', '{"fleet": true, "reports": true}')
+ON CONFLICT (name) DO NOTHING;
+
+-- Seed Standard GPS Device Model (Concox GT06)
+INSERT INTO device_models (name, brand, protocol) VALUES 
+('GT06N', 'Concox', 'gt06'),
+('TK103B', 'Coban', 'tk103'),
+('ST-901', 'SinoTrack', 'h02')
+ON CONFLICT DO NOTHING;
 
 -- Seed Command Templates
-INSERT INTO command_templates (brand, model, protocol, action, command_string) VALUES
-('Concox', 'GT06', 'gt06', 'IGNITION_OFF', 'RELAY,1#'),
-('Concox', 'GT06', 'gt06', 'IGNITION_ON', 'RELAY,0#'),
-('Concox', 'GT06N', 'gt06', 'IGNITION_OFF', 'RELAY,1#'),
-('Concox', 'GT06N', 'gt06', 'IGNITION_ON', 'RELAY,0#'),
-('Coban', 'TK103', 'tk103', 'IGNITION_OFF', 'DYD#'),
-('Coban', 'TK103', 'tk103', 'IGNITION_ON', 'HFYD#'),
-('Coban', 'TK103B', 'tk103', 'IGNITION_OFF', 'DYD#'),
-('Coban', 'TK103B', 'tk103', 'IGNITION_ON', 'HFYD#'),
-('Teltonika', 'FMB920', 'teltonika', 'IGNITION_OFF', 'setdigout 1'),
-('Teltonika', 'FMB920', 'teltonika', 'IGNITION_ON', 'setdigout 0'),
-('Teltonika', 'FMB120', 'teltonika', 'IGNITION_OFF', 'setdigout 1'),
-('Teltonika', 'FMB120', 'teltonika', 'IGNITION_ON', 'setdigout 0'),
-('Jimi', 'VL02', 'jimi', 'IGNITION_OFF', 'RELAY,1#'),
-('Jimi', 'VL02', 'jimi', 'IGNITION_ON', 'RELAY,0#'),
-('Jimi', 'VL03', 'jimi', 'IGNITION_OFF', 'RELAY,1#'),
-('Jimi', 'VL03', 'jimi', 'IGNITION_ON', 'RELAY,0#'),
-('Meitrack', 'T333', 'meitrack', 'IGNITION_OFF', 'RELAY,1#'),
-('Meitrack', 'T333', 'meitrack', 'IGNITION_ON', 'RELAY,0#'),
-('Queclink', 'GV300', 'queclink', 'IGNITION_OFF', 'AT+GTOUT=1,1'),
-('Queclink', 'GV300', 'queclink', 'IGNITION_ON', 'AT+GTOUT=1,0'),
-('SinoTrack', 'ST901', 'h02', 'IGNITION_OFF', 'RELAY,1#'),
-('SinoTrack', 'ST901', 'h02', 'IGNITION_ON', 'RELAY,0#'),
-('Eelink', 'TK116', 'eelink', 'IGNITION_OFF', 'RELAY,1#'),
-('Eelink', 'TK116', 'eelink', 'IGNITION_ON', 'RELAY,0#'),
-('WanWay', 'S20', 'wanway', 'IGNITION_OFF', 'RELAY,1#'),
-('WanWay', 'S20', 'wanway', 'IGNITION_ON', 'RELAY,0#')
-ON CONFLICT DO NOTHING;
+INSERT INTO command_templates (protocol, action, command_string) VALUES
+('gt06', 'IGNITION_OFF', 'RELAY,1#'),
+('gt06', 'IGNITION_ON', 'RELAY,0#'),
+('tk103', 'IGNITION_OFF', 'DYD#'),
+('tk103', 'IGNITION_ON', 'HFYD#')
+ON CONFLICT (protocol, action) DO NOTHING;
+
+-- Seed User's Requested Hardware
+INSERT INTO device_inventory (imei, serial_number, sim_number, model_id) VALUES 
+('869727079043558', 'SN043558', '9999999999', 1),
+('869727079043556', 'SN043556', '8888888888', 1)
+ON CONFLICT (imei) DO NOTHING;

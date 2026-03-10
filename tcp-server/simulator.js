@@ -28,17 +28,13 @@ async function seedAndSimulate() {
     console.log('--- SEEDING 100 DUMMY DEVICES ---');
 
     try {
-        // 1. Get a client ID to assign devices to
-        const clientRes = await pool.query("SELECT id FROM users WHERE role = 'client' LIMIT 1");
+        // 1. Get a client user to assign devices to
+        const clientRes = await pool.query("SELECT id FROM users LIMIT 1");
         if (clientRes.rows.length === 0) {
-            console.error('No client user found. Please register a client first.');
+            console.error('No users found. Please seed roles and a user first.');
             process.exit(1);
         }
         const clientId = clientRes.rows[0].id;
-
-        // 2. Get a standard model ID
-        const modelRes = await pool.query("SELECT id FROM device_models LIMIT 1");
-        const modelId = modelRes.rows[0]?.id || null;
 
         for (let i = 0; i < 100; i++) {
             const imei = 'SIM' + String(100000000000 + i);
@@ -46,14 +42,26 @@ async function seedAndSimulate() {
 
             // Insert into inventory
             await pool.query(
-                "INSERT INTO device_inventory (imei, serial_number, model_id, protocol) VALUES ($1, $2, $3, 'GT06') ON CONFLICT (imei) DO NOTHING",
-                [imei, 'SN' + imei, modelId]
+                "INSERT INTO device_inventory (imei, protocol, model) VALUES ($1, 'gt06', 'GT06-Sim') ON CONFLICT (imei) DO NOTHING",
+                [imei]
             );
 
-            // Insert into devices and link to client
+            // Insert into devices and link to client via vehicles
+            const devExists = await pool.query("SELECT id FROM devices WHERE imei = $1", [imei]);
+            let deviceId;
+            if (devExists.rows.length === 0) {
+                const newDev = await pool.query(
+                    "INSERT INTO devices (imei, device_name, protocol) VALUES ($1, $2, 'gt06') RETURNING id",
+                    [imei, name]
+                );
+                deviceId = newDev.rows[0].id;
+            } else {
+                deviceId = devExists.rows[0].id;
+            }
+
             await pool.query(
-                "INSERT INTO devices (user_id, imei, name, model_id, speed_limit) VALUES ($1, $2, $3, $4, 80) ON CONFLICT (imei) DO NOTHING",
-                [clientId, imei, name, modelId]
+                "INSERT INTO vehicles (vehicle_number, driver_name, device_id, client_id) VALUES ($1, $2, $3, $4) ON CONFLICT (vehicle_number) DO NOTHING",
+                [name, 'Driver ' + (i + 1), deviceId, clientId]
             );
         }
 

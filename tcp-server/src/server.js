@@ -5,6 +5,7 @@ const GT06Parser = require('./parsers/gt06');
 const ProtocolDetector = require('./parsers/ProtocolDetector');
 const RulesEngine = require('./RulesEngine');
 const { Pool } = require('pg');
+const fetch = require('node-fetch');
 
 // Connect to Postgres
 const pool = new Pool({
@@ -125,9 +126,9 @@ const server = net.createServer((socket) => {
 
                     // Upsert Live Data: Only update if the incoming packet is newer or same age as current live record
                     await pool.query(`
-                        INSERT INTO gps_live_data (device_id, latitude, longitude, speed, heading, ignition, timestamp)
+                        INSERT INTO gps_live_data (imei, latitude, longitude, speed, heading, ignition, timestamp)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
-                        ON CONFLICT (device_id) DO UPDATE SET
+                        ON CONFLICT (imei) DO UPDATE SET
                             latitude = EXCLUDED.latitude,
                             longitude = EXCLUDED.longitude,
                             speed = EXCLUDED.speed,
@@ -135,10 +136,9 @@ const server = net.createServer((socket) => {
                             ignition = EXCLUDED.ignition,
                             timestamp = EXCLUDED.timestamp
                         WHERE EXCLUDED.timestamp >= gps_live_data.timestamp
-                    `, [deviceId, parsed.lat, parsed.lng, parsed.speed, parsed.heading, isIgnitionOn, parsed.timestamp]);
+                    `, [deviceImei, parsed.lat, parsed.lng, parsed.speed, parsed.heading, isIgnitionOn, parsed.timestamp]);
 
                     // Append to History
-                    // Note: Ensure gps_history is partitioned or table exists.
                     await pool.query(`
                         INSERT INTO gps_history (device_id, latitude, longitude, speed, heading, ignition, timestamp)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -169,7 +169,7 @@ const server = net.createServer((socket) => {
                 } catch (traccarErr) { }
 
             } catch (dbErr) {
-                console.error(`[Redis] Failed to store/publish for ${deviceImei}:`, err);
+                console.error(`[DB/Redis] Processing error for ${deviceImei}:`, dbErr.message);
             }
         }
         else if (parsed.type === 'HEARTBEAT') {

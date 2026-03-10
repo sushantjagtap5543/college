@@ -11,6 +11,7 @@ const TRACCAR_URL = process.env.TRACCAR_URL || 'http://localhost:8082';
 const TRACCAR_USER = process.env.TRACCAR_USER || 'admin';
 const TRACCAR_PASS = process.env.TRACCAR_PASS || 'admin';
 const TRACCAR_AUTH = Buffer.from(`${TRACCAR_USER}:${TRACCAR_PASS}`).toString('base64');
+const fetch = require('node-fetch');
 const twilio = require('twilio');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
