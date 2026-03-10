@@ -3,6 +3,7 @@ const net = require('net');
 const redis = require('redis');
 const GT06Parser = require('./parsers/gt06');
 const ProtocolDetector = require('./parsers/ProtocolDetector');
+const RulesEngine = require('./RulesEngine');
 const { Pool } = require('pg');
 
 // Connect to Postgres
@@ -142,6 +143,9 @@ const server = net.createServer((socket) => {
                         INSERT INTO gps_history (device_id, latitude, longitude, speed, heading, ignition, timestamp)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
                     `, [deviceId, parsed.lat, parsed.lng, parsed.speed, parsed.heading, isIgnitionOn, parsed.timestamp]);
+
+                    // 4. Evaluate Alert Rules (Autonomous Rules Engine)
+                    await RulesEngine.evaluate(deviceId, parsed.lat, parsed.lng, parsed.speed, isIgnitionOn, parsed.timestamp);
                 }
 
                 // 1. Store latest position in Redis Hash (for REST API reads)
