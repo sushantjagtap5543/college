@@ -835,6 +835,148 @@ const LandingPage = ({ onLogin }) => {
 };
 
 
+const RegisterPage = () => {
+    const navigate = useNavigate();
+    const [name, setName] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [phone, setPhone] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+
+    const handleRegister = async (e) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setError('');
+
+        try {
+            const req = await fetch(`${API_BASE}/api/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, password, phone })
+            });
+            const data = await req.json();
+
+            if (data.status === 'SUCCESS') {
+                navigate('/login', { state: { registered: true, name } });
+            } else {
+                setError(data.message || 'Registration failed.');
+            }
+        } catch (err) {
+            setError('System temporarily unavailable. Please try again later.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex bg-black font-sans selection:bg-[#10b981] selection:text-black overflow-hidden relative">
+            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#10b981]/5 rounded-full blur-[120px] pointer-events-none" />
+            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#0ea5e9]/5 rounded-full blur-[100px] pointer-events-none" />
+
+            <div className="hidden lg:flex lg:w-3/5 relative flex-col justify-between p-16 overflow-hidden border-r border-white/5">
+                <div className="relative z-10 flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
+                    <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform bg-black/30 border border-[#10b981]/30 flex items-center justify-center">
+                        <MapIcon className="text-[#10b981]" size={24} />
+                    </div>
+                    <span className="font-black text-2xl text-white tracking-tighter uppercase italic">GEOSURE<span className="text-[#10b981]">PATH</span></span>
+                </div>
+
+                <div className="relative z-10">
+                    <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 1 }}>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#10b981]/10 border border-[#10b981]/20 text-[#10b981] text-[10px] font-black uppercase tracking-[0.2em] mb-8">
+                            <Rocket size={12} className="fill-current" /> Join the Fleet Management Evolution
+                        </div>
+                        <h1 className="text-7xl font-black text-white leading-[0.9] tracking-tighter mb-8 italic">
+                            Create <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10b981] to-[#34d399]">Account.</span>
+                        </h1>
+                        <p className="text-slate-500 text-lg max-w-md mb-12 leading-relaxed font-black uppercase tracking-tight">
+                            Get started today. Secure your assets with the industry's most advanced high-resolution tracking platform.
+                        </p>
+                    </motion.div>
+                </div>
+
+                <div className="relative z-10 flex items-center gap-6 text-slate-600 text-[10px] font-black uppercase tracking-widest">
+                    <span>&copy; {new Date().getFullYear()} CORE OS</span>
+                    <button className="hover:text-[#10b981] transition-colors">Documentation</button>
+                    <button className="hover:text-[#10b981] transition-colors">Privacy Policy</button>
+                </div>
+            </div>
+
+            <div className="w-full lg:w-2/5 flex items-center justify-center p-8 relative overflow-y-auto custom-scrollbar">
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-[40px] p-10 md:p-14 shadow-2xl relative overflow-hidden group hover:border-[#10b981]/30 transition-colors">
+                        <div className="absolute top-0 right-0 w-64 h-64 bg-[#10b981]/5 rounded-full blur-[80px] group-hover:bg-[#10b981]/10 transition-colors" />
+
+                        <div className="relative z-10 mb-10 pb-6 border-b border-white/10">
+                            <h2 className="text-3xl font-black text-white italic tracking-tighter">Register</h2>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Create your client portal account</p>
+                        </div>
+
+                        {error && (
+                            <div className="mb-8 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-4 text-rose-500 animate-in slide-in-from-top-2">
+                                <AlertCircle size={20} />
+                                <span className="text-xs font-black uppercase tracking-widest">{error}</span>
+                            </div>
+                        )}
+
+                        <form onSubmit={handleRegister} className="space-y-6 relative z-10">
+                            <div className="space-y-4">
+                                <div className="group">
+                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Full Name</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><UserCircle size={16} /></div>
+                                        <input required type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. John Doe" className="w-full pl-12 pr-5 py-3.5 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                    </div>
+                                </div>
+
+                                <div className="group">
+                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Email Address</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><LogIn size={16} /></div>
+                                        <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. john@domain.com" className="w-full pl-12 pr-5 py-3.5 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                    </div>
+                                </div>
+
+                                <div className="group">
+                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Phone Number</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><Smartphone size={16} /></div>
+                                        <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. +1234567890" className="w-full pl-12 pr-5 py-3.5 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                    </div>
+                                </div>
+
+                                <div className="group">
+                                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 pl-1 group-focus-within:text-[#10b981] transition-colors">Password</label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><Shield size={16} /></div>
+                                        <input required type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 6 characters" className="w-full pl-12 pr-12 py-3.5 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner" />
+                                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-[#10b981] transition-colors">
+                                            {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button disabled={isLoading} type="submit" className="w-full bg-[#10b981] hover:bg-[#059669] text-black py-4 rounded-xl font-black text-[11px] uppercase tracking-[0.2em] transition-all disabled:opacity-50 shadow-[0_0_30px_rgba(16,185,129,0.2)] hover:shadow-[0_0_40px_rgba(16,185,129,0.4)] active:scale-95 flex items-center justify-center gap-3">
+                                {isLoading ? <><RefreshCcw size={16} className="animate-spin" /> Provisioning Account...</> : <>Create Account <ArrowRight size={16} /></>}
+                            </button>
+
+                            <div className="pt-6 border-t border-white/10 flex flex-col items-center gap-4">
+                                <button type="button" onClick={() => navigate('/login')} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-[#10b981] transition-colors">
+                                    Already have an account? Login
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </motion.div>
+            </div>
+        </div>
+    );
+};
+
 const LoginPage = ({ onLogin }) => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -3079,6 +3221,7 @@ export default function App() {
                     <Routes>
                         <Route path="/" element={<LandingPage />} />
                         <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
+                        <Route path="/register" element={<RegisterPage />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 ) : (

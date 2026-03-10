@@ -494,6 +494,68 @@ app.post('/api/vehicles/remove', async (req, res) => {
 
 // 1.5. User Login Endpoint (Proxied to Traccar)
 
+// --- PUBLIC REGISTRATION ---
+app.post('/api/register', async (req, res) => {
+    const { name, email, password, phone } = req.body;
+    if (!name || !email || !password) {
+        return res.status(400).json({ status: 'ERROR', message: 'Name, Email, and Password are required.' });
+    }
+
+    try {
+        // 1. Create User in Traccar (Bypasses local DB first to ensure Traccar sync)
+        const traccarUserRes = await fetch(`${TRACCAR_URL}/api/users`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${TRACCAR_AUTH}`
+            },
+            body: JSON.stringify({ name, email, password, administrator: false })
+        });
+
+        if (!traccarUserRes.ok) {
+            const errorText = await traccarUserRes.text();
+            console.error('[Traccar] Registration failed:', errorText);
+
+            // If user already exists in Traccar, we might want to check local DB
+            if (errorText.includes('duplicate') || errorText.includes('already exists')) {
+                return res.status(400).json({ status: 'ERROR', message: 'Account already exists.' });
+            }
+            return res.status(500).json({ status: 'ERROR', message: 'Failed to sync with tracking engine.' });
+        }
+
+        const traccarUser = await traccarUserRes.json();
+
+        // 2. Create in Local database
+        try {
+            await pool.query('BEGIN');
+            const salt = await bcrypt.genSalt(10);
+            const hash = await bcrypt.hash(password, salt);
+
+            const roleRes = await pool.query("SELECT id FROM roles WHERE name = 'CLIENT'");
+            if (roleRes.rows.length === 0) {
+                throw new Error("CLIENT role not found. System misconfigured.");
+            }
+            const roleId = roleRes.rows[0].id;
+
+            await pool.query(
+                `INSERT INTO users (role_id, name, email, password_hash, password_text, phone, traccar_id) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [roleId, name, email, hash, password, phone || '', traccarUser.id]
+            );
+            await pool.query('COMMIT');
+
+            res.json({ status: 'SUCCESS', message: 'Registration successful. Welcome to GeoSurePath!' });
+        } catch (dbErr) {
+            await pool.query('ROLLBACK');
+            console.error('[DB] Registration Rollback Trace:', dbErr);
+            res.status(500).json({ status: 'ERROR', message: 'Internal Database Error during registration.' });
+        }
+    } catch (err) {
+        console.error('[AUTH] Critical Registration Failure:', err);
+        res.status(500).json({ status: 'ERROR', message: 'System unreachable. Please try again later.' });
+    }
+});
+
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {

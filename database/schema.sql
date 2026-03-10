@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     password_text VARCHAR(255), -- for development/quick reference
+    phone VARCHAR(20),
+    traccar_id INTEGER,
     is_active BOOLEAN DEFAULT true,
     is_blocked BOOLEAN DEFAULT false,
     subscription_plan VARCHAR(50) DEFAULT 'basic',
