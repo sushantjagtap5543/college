@@ -14,19 +14,29 @@ import {
     CheckCircle2,
     AlertTriangle,
     Menu,
-    Search
+    Search,
+    Wrench,
+    Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:8080'
-    : `${window.location.protocol}//${window.location.hostname}`;
+import CONFIG from '../config';
+const API_BASE = CONFIG.API_URL;
 
-const SIDEBAR_ITEMS = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/live', icon: MapIcon, label: 'Live Tracking' },
-    { path: '/reports', icon: FileText, label: 'Reports' },
-];
+const SIDEBAR_ITEMS = {
+    ADMIN: [
+        { path: '/admin', icon: Shield, label: 'System Overview' },
+        { path: '/command-center', icon: Activity, label: 'Command Hub' },
+        { path: '/live', icon: MapIcon, label: 'Asset Monitor' },
+        { path: '/reports', icon: FileText, label: 'Intelligence' },
+    ],
+    CLIENT: [
+        { path: '/client', icon: LayoutDashboard, label: 'Dashboard' },
+        { path: '/live', icon: MapIcon, label: 'Live Tracking' },
+        { path: '/reports', icon: FileText, label: 'Reports' },
+        { path: '/maintenance', icon: Wrench, label: 'Maintenance' },
+    ]
+};
 
 const BOTTOM_ITEMS = [
     { path: '/settings', icon: Settings, label: 'Settings' },
@@ -79,13 +89,13 @@ export default function Layout({ children, user, onLogout }) {
 
     return (
         <div className="flex h-screen w-full bg-[#f3f4f6] dark:bg-[#0f172a] overflow-hidden text-slate-800 dark:text-slate-200 font-sans selection:bg-blue-500 selection:text-white">
-            {/* Sidebar Navigation - GeoSurePath Classic Navy */}
+            {/* Sidebar Navigation - Dynamic Portal Layout */}
             <aside className="w-[80px] bg-[#1a233a] h-full flex flex-col items-center py-6 z-[100] shadow-xl border-r border-[#2a344a] relative shrink-0">
                 {/* Logo */}
                 <div
                     className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-8 cursor-pointer shadow-lg border border-white/10 overflow-hidden hover:scale-105 transition-transform"
                     onClick={() => navigate('/')}
-                    title="GeoSurePath Dashboard"
+                    title={`${CONFIG.PORTAL_NAME} Dashboard`}
                 >
                     <img
                         src="/logo.png"
@@ -93,19 +103,28 @@ export default function Layout({ children, user, onLogout }) {
                         className="w-10 h-10 object-contain"
                         onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                     />
-                    <span className="font-bold text-[#1a233a] text-[8px] text-center leading-tight hidden items-center justify-center">GEO<br />SURE</span>
+                    <div className="flex flex-col items-center justify-center">
+                        <span className="font-black text-[#1a233a] text-[10px] leading-tight text-center">
+                            {CONFIG.PORTAL_NAME.substring(0, 3).toUpperCase()}
+                        </span>
+                        <span className="font-black text-emerald-500 text-[8px] leading-tight text-center">
+                            {CONFIG.PORTAL_NAME.substring(3, 7).toUpperCase()}
+                        </span>
+                    </div>
                 </div>
 
                 <div className="w-8 border-b border-[#2a344a] mb-6" />
 
                 {/* Primary Nav */}
                 <nav className="flex flex-col gap-6 w-full items-center p-4">
-                    {SIDEBAR_ITEMS.map((item) => {
-                        const isActive = location.pathname === item.path || (item.path === '/' && (location.pathname === '/client' || location.pathname === '/admin'));
+                    {(user?.role === 'ADMIN' ? SIDEBAR_ITEMS.ADMIN : SIDEBAR_ITEMS.CLIENT).map((item) => {
+                        const isActive = location.pathname === item.path ||
+                            (item.path === '/admin' && location.pathname === '/') ||
+                            (item.path === '/client' && location.pathname === '/');
                         return (
                             <Link
                                 key={item.label}
-                                to={item.path === '/' ? (user?.role === 'ADMIN' ? '/admin' : '/client') : item.path}
+                                to={item.path}
                                 className={`flex flex-col items-center justify-center transition-all group w-14 h-14 rounded-2xl relative ${isActive ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'text-slate-400 hover:text-white hover:bg-[#202b45]'}`}
                                 title={item.label}
                             >
@@ -141,15 +160,11 @@ export default function Layout({ children, user, onLogout }) {
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-[#f3f4f6] dark:bg-[#0f172a]">
-                {/* GeoSurePath Classic Header */}
+                {/* Dynamic Portal Header */}
                 <header className="h-16 bg-[#1a233a] text-white flex items-center justify-between px-6 z-[90] shrink-0 shadow-lg border-b border-white/5">
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-                            <img src="/logo.png" alt="GeoSurePath" className="w-10 h-10 rounded-xl shadow-[0_0_16px_rgba(16,185,129,0.3)] group-hover:scale-105 transition-transform object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
-                            <div className="hidden bg-[#10b981] p-1.5 rounded-lg items-center justify-center">
-                                <MapIcon className="text-black" size={16} />
-                            </div>
-                            <span className="font-black text-xl tracking-tighter uppercase italic">GEOSURE<span className="text-[#10b981]">PATH</span></span>
+                            <span className="font-black text-xl tracking-tighter uppercase italic">{CONFIG.PORTAL_NAME.split(/(?=[A-Z])/)[0]}<span className="text-[#10b981]">{CONFIG.PORTAL_NAME.split(/(?=[A-Z])/).slice(1).join('')}</span></span>
                         </div>
 
                         <div className="h-8 w-px bg-white/10 hidden md:block" />

@@ -1,68 +1,49 @@
 # GeoSurePath - GPS Tracking Platform
+Strategic Asset Oversight Powered by Traccar Intelligence.
 
-A comprehensive enterprise-grade platform for real-time asset intelligence, providing zero-latency vehicle tracking, robust telemetry data management, and secure administrative controls.
+GeoSurePath is a premium, enterprise-grade GPS SaaS platform designed to offer high-fidelity asset intelligence. The system is rebuilt to serve as a unified, high-performance interface for the Traccar engine, featuring real-time tracking, analytical reporting, and autonomous alerting.
 
-## System Architecture
+## 🛠 Unified Architecture
 
-The GeoSurePath platform consists of:
-- **Frontend Dashboard:** A high-performance React application utilizing TailwindCSS for styling and Leaflet for geospatial visualization.
-- **Backend API:** An Express/Node.js service for command queuing, device management, billing controls, and history curation.
-- **Database:** PostgreSQL handling primary relationships (clients, devices, commands), postGIS geofencing data, and long-term telemetry storage.
+The platform follows a three-tier "Forward & Proxy" architecture:
+- **Frontend (React):** A premium geospatial dashboard. All data is proxied through our backend—no direct Traccar calls, ensuring security and CORS compliance.
+- **Backend (Node.js):** The "Intelligence Hub". It handles authentication, provisions users in Traccar, proxies analytical reports (Trips/Stops), and receives real-time event webhooks.
+- **TCP Server:** A high-performance ingestion engine that processes incoming GPS device data (Concox/GT06) and forwards it directly to Traccar for analytical parity.
 
-## Authentication & Credentials
+## 🔗 Traccar Integration Details
 
-**Administrator Access:**
-- Role: Platform Admin
-- Function: Fleet provisioning, global oversight, billing management.
-- URL: `http://3.108.114.12`
-- Email: `admin@geosurepath.com`
-- Password: `admin@123`
+### Proxy Layer
+All analytical engine features are proxied securely:
+- **Reports:** [Trips, Stops, Summary] fetched from Traccar and normalized for the portal.
+- **Geofences:** Real-time drafting and syncing between the map and the Traccar engine.
+- **Commands:** Proxy for GPRS commands (Immobilization, Sound siren) to the devices.
 
-**Traccar Admin Access (Telemetry Core):**
-- URL: `http://3.108.114.12:8082`
-- Admin User: `admin`
-- Admin Pass: `admin`
+### Auto-Provisioning
+Registering a new account in GeoSurePath automatically:
+1. Creates a local account for metadata and billing.
+2. Provisions a corresponding User in the Traccar engine.
+3. Maps entered Device IMEIs to Traccar devices and links them to the user.
 
-**Client Test Registration:**
-- Demo IMEI for testing: `869727079043558` (Pre-registered in both Traccar and Platform)
-- Client Login: Register a new account or use existing `user@example.com` (if seeded).
-- Mock OTP: `1234`
+## 🚦 Setup & Verification
 
-## Production Deployment Info (AWS Lightsail)
+### 1. Requirements
+- **PostgreSQL 14+** (with PostGIS extension)
+- **Redis 6+** (for live pub/sub state)
+- **Traccar Engine** (accessible on localhost:8082 or via .env)
 
-- **Static IP:** `3.108.114.12`
-- **Location:** AWS Mumbai (ap-south-1)
-- **Deployment Mode:** Dockerized Multi-Service Architecture
-- **Infrastructure:** Ubuntu 22.04 LTS, 2GB RAM, 2GB Swap enabled.
+### 2. Quick Start
+1. **Database:** Import `database/schema.sql` to your Postgres instance.
+2. **Backend:** Configure `backend/.env` and run `npm start`.
+3. **TCP Server:** Configure `tcp-server/.env` and run `npm start`.
+4. **Frontend:** Run `npm run dev` or build for production (`dist/`).
 
-### GPS Device Communications
-- **Target IP:** `3.108.114.12`
-- **Port (GT06/Concox):** `5023`
-- **Port (Protocols):** `5000` (Main), `5055` (UDP)
+### 3. Production Deployment (AWS/Ubuntu)
+- A production-ready `nginx.conf.example` is provided in the `docs/` folder.
+- Use `install.sh` for automated setup on Lightsail/EC2.
 
-## Operational Workflows
-
-### 1. New Client Registration
-1. Access `http://3.108.114.12` -> Register.
-2. Use Mock OTP `1234` for mobile verification.
-3. Add Device `869727079043558` to your fleet.
-
-### 2. Live Tracking
-- Live tracking auto-refreshes via WebSocket on port `8080`.
-- Dark/Light mode is fully synchronized with system settings.
-
-### 3. Data Pruning & Backups
-- GPS data is retained on-server for **180 days**.
-- Nightly backups transfer data to the configured Google Drive folder.
-- Non-GPS data is NOT pruned (only location telemetry).
-
-## Maintenance
-To clean and redeploy:
-```bash
-cd /opt/geosurepath
-sudo git pull origin main
-sudo bash install.sh
-```
+## 🔐 Credentials (Local Default)
+- **Platform Admin:** `admin@geosurepath.com` / `admin@123`
+- **Traccar Admin:** `admin` / `admin` (Base URL: `http://localhost:8082`)
 
 ---
 *GeoSurePath - Strategic Asset Oversight.*

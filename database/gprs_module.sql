@@ -1,46 +1,10 @@
--- GEOSUREPATH - Master Database Schema V2
--- Optimized for GPRS Command Module & Traccar Integration
+-- GPRS COMMAND MODULE SCHEMA
+-- Creating the tables as per USER_REQUEST
 
--- Enable necessary extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 1. Roles & Users (Preserving for Authentication)
-CREATE TABLE IF NOT EXISTS roles (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL,
-    permissions JSONB DEFAULT '{}'
-);
-
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    role_id INTEGER REFERENCES roles(id),
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    password_text VARCHAR(255),
-    is_active BOOLEAN DEFAULT true,
-    is_blocked BOOLEAN DEFAULT false,
-    subscription_plan VARCHAR(50) DEFAULT 'basic',
-    subscription_end_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP + INTERVAL '365 days',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 2. Device Inventory (Stock / Master Registry)
-CREATE TABLE IF NOT EXISTS device_inventory (
-    id SERIAL PRIMARY KEY,
-    imei VARCHAR(50) UNIQUE NOT NULL,
-    protocol VARCHAR(50) DEFAULT 'gt06',
-    model VARCHAR(50),
-    sim_number VARCHAR(20),
-    is_assigned BOOLEAN DEFAULT false,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 3. Live Devices (Registered in Traccar)
+-- 1. Devices Table
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL PRIMARY KEY,
-    imei VARCHAR(50) UNIQUE NOT NULL REFERENCES device_inventory(imei),
+    imei VARCHAR(50) UNIQUE NOT NULL,
     device_name VARCHAR(100),
     protocol VARCHAR(50),
     model VARCHAR(50),
@@ -49,18 +13,16 @@ CREATE TABLE IF NOT EXISTS devices (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 4. Vehicles Table
+-- 2. Vehicles Table
 CREATE TABLE IF NOT EXISTS vehicles (
     id SERIAL PRIMARY KEY,
     vehicle_number VARCHAR(50) UNIQUE NOT NULL,
     driver_name VARCHAR(100),
     device_id INTEGER REFERENCES devices(id),
-    client_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    is_active BOOLEAN DEFAULT true, -- Add is_active if missing
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Command Templates Table (Optimized for Upserts)
+-- 3. Command Templates Table
 CREATE TABLE IF NOT EXISTS command_templates (
     id SERIAL PRIMARY KEY,
     brand VARCHAR(100),
@@ -68,12 +30,10 @@ CREATE TABLE IF NOT EXISTS command_templates (
     protocol VARCHAR(50),
     action VARCHAR(50), -- IGNITION_OFF, IGNITION_ON
     command_string VARCHAR(255),
-    description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (protocol, action)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 5. Device Commands Table (Log) (As per USER_REQUEST)
+-- 4. Device Commands Table (Logs)
 CREATE TABLE IF NOT EXISTS device_commands (
     id SERIAL PRIMARY KEY,
     vehicle_id INTEGER REFERENCES vehicles(id),
@@ -83,22 +43,8 @@ CREATE TABLE IF NOT EXISTS device_commands (
     status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, SENT, DELIVERED, FAILED
     response TEXT,
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    user_id UUID REFERENCES users(id)
+    user_id UUID -- References our existing users(id) if available
 );
-
--- 6. GPS Live Data (For Map display)
-CREATE TABLE IF NOT EXISTS gps_live_data (
-    imei VARCHAR(50) PRIMARY KEY REFERENCES devices(imei),
-    latitude DECIMAL(10, 8) NOT NULL,
-    longitude DECIMAL(11, 8) NOT NULL,
-    speed DECIMAL(5, 2) DEFAULT 0,
-    heading SMALLINT DEFAULT 0,
-    ignition BOOLEAN DEFAULT false,
-    last_update TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Seed Initial Data
-INSERT INTO roles (name) VALUES ('ADMIN'), ('CLIENT') ON CONFLICT DO NOTHING;
 
 -- Seed Command Templates
 INSERT INTO command_templates (brand, model, protocol, action, command_string) VALUES
@@ -127,5 +73,4 @@ INSERT INTO command_templates (brand, model, protocol, action, command_string) V
 ('Eelink', 'TK116', 'eelink', 'IGNITION_OFF', 'RELAY,1#'),
 ('Eelink', 'TK116', 'eelink', 'IGNITION_ON', 'RELAY,0#'),
 ('WanWay', 'S20', 'wanway', 'IGNITION_OFF', 'RELAY,1#'),
-('WanWay', 'S20', 'wanway', 'IGNITION_ON', 'RELAY,0#')
-ON CONFLICT DO NOTHING;
+('WanWay', 'S20', 'wanway', 'IGNITION_ON', 'RELAY,0#');

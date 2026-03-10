@@ -161,7 +161,14 @@ const server = net.createServer((socket) => {
                     isRealTime: parsed.isRealTime
                 });
                 await redisPub.publish('gps:updates', pubMsg);
-            } catch (err) {
+
+                // 3. Forward to Traccar (OsmAnd protocol)
+                try {
+                    const traccarUrl = `http://localhost:8082/?id=${deviceImei}&lat=${parsed.lat}&lon=${parsed.lng}&speed=${parsed.speed * 0.539957}&timestamp=${encodeURIComponent(parsed.timestamp)}`;
+                    fetch(traccarUrl).catch(e => { }); // Fire and forget
+                } catch (traccarErr) { }
+
+            } catch (dbErr) {
                 console.error(`[Redis] Failed to store/publish for ${deviceImei}:`, err);
             }
         }

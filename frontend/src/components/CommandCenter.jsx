@@ -68,18 +68,17 @@ export default function CommandCenter({ fleet = [] }) {
         try {
             const cmd = commands.find(c => c.id === commandType);
 
-            let backendCommand = commandType;
-            if (commandType === 'engine_stop') backendCommand = 'CUT_ENGINE';
-            if (commandType === 'engine_resume') backendCommand = 'RESTORE_ENGINE';
-            if (commandType === 'custom') backendCommand = customCommand;
+            let action = 'IGNITION_ON';
+            if (commandType === 'engine_stop') action = 'IGNITION_OFF';
+            if (commandType === 'engine_resume') action = 'IGNITION_ON';
 
-            const res = await fetch(`${API_BASE}/api/commands/sms`, {
+            const res = await fetch(`${API_BASE}/api/commands/send-ignition`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    deviceId: selectedDevice,
-                    commandType: backendCommand,
-                    isDemo: false
+                    vehicleId: selectedDevice,
+                    action,
+                    userId: 1 // Placeholder for current user ID, should ideally come from props
                 })
             });
 
@@ -88,8 +87,8 @@ export default function CommandCenter({ fleet = [] }) {
             setCommandHistory([
                 {
                     id: Date.now(),
-                    device: device?.name || selectedDevice,
-                    command: cmd?.label || customCommand || 'Command',
+                    device: device?.vehicle_number || device?.name || selectedDevice,
+                    command: cmd?.label || 'Command',
                     status: data.status === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 },
@@ -97,10 +96,7 @@ export default function CommandCenter({ fleet = [] }) {
             ]);
 
             if (data.status === 'SUCCESS') {
-                setStatus({ type: 'success', message: 'Command dispatched successfully.' });
-                // Update local execution toggle state
-                if (commandType === 'engine_stop') setEngineStates({ ...engineStates, [selectedDevice]: 'OFF' });
-                if (commandType === 'engine_resume') setEngineStates({ ...engineStates, [selectedDevice]: 'ON' });
+                setStatus({ type: 'success', message: data.message || 'GPRS Command Sent.' });
                 setCommandType('');
             } else {
                 setStatus({ type: 'error', message: data.message || 'Dispatch failed.' });

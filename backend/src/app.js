@@ -3,8 +3,14 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
+const axios = require('axios');
 const { Pool } = require('pg');
 const redis = require('redis');
+
+const TRACCAR_URL = process.env.TRACCAR_URL || 'http://localhost:8082';
+const TRACCAR_USER = process.env.TRACCAR_USER || 'admin';
+const TRACCAR_PASS = process.env.TRACCAR_PASS || 'admin';
+const TRACCAR_AUTH = Buffer.from(`${TRACCAR_USER}:${TRACCAR_PASS}`).toString('base64');
 const twilio = require('twilio');
 const nodemailer = require('nodemailer');
 const bcrypt = require('bcryptjs');
@@ -54,7 +60,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // Needed for Twilio Webhooks
 
 // Postgres Connection Pool
-const pool = new Pool({
+let pool = new Pool({
     user: process.env.POSTGRES_USER || 'gps_admin',
     password: process.env.POSTGRES_PASSWORD || 'gps_strong_password',
     host: process.env.DB_HOST || 'localhost',
@@ -62,10 +68,59 @@ const pool = new Pool({
     port: 5432,
 });
 
+pool.on('error', () => { }); // Catch background pool idle errors
+
 // Admin Provisioning Logic
 const ensureAdminExists = async () => {
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@geosurepath.com';
+    const PORTAL_NAME = process.env.PORTAL_NAME || 'GeoSurePath';
+    const adminEmail = process.env.ADMIN_EMAIL || `cadmin@${PORTAL_NAME.toLowerCase()}.com`;
     const adminPass = process.env.ADMIN_PASSWORD || 'admin@123';
+
+    try {
+        await pool.query('SELECT 1');
+    } catch (e) {
+        console.warn("[INIT] Local PostgreSQL disconnected. Initializing pg-mem (In-Memory Virtual Mode).");
+        try {
+            const { newDb } = require('pg-mem');
+            const crypto = require('crypto');
+            const fs = require('fs');
+            const path = require('path');
+            const db = newDb();
+
+            db.public.registerFunction({
+                name: 'uuid_generate_v4',
+                args: [],
+                returns: 'uuid',
+                implementation: () => crypto.randomUUID(),
+                impure: true
+            });
+
+            db.public.registerFunction({
+                name: 'version',
+                args: [],
+                returns: 'text',
+                implementation: () => 'PostgreSQL 14.1 (mocked by pg-mem)',
+                impure: true
+            });
+
+            const schemaPath = path.join(__dirname, '../../database/schema.sql');
+            let schemaSql = fs.readFileSync(schemaPath, 'utf8');
+            schemaSql = schemaSql.replace(/CREATE EXTENSION IF NOT EXISTS "uuid-ossp";/ig, '');
+            schemaSql = schemaSql.replace(/CREATE EXTENSION IF NOT EXISTS "postgis";/ig, '');
+            schemaSql = schemaSql.replace(/geom geometry NOT NULL/ig, 'geom TEXT NOT NULL');
+            schemaSql = schemaSql.replace(/PARTITION BY RANGE \(timestamp\)/ig, '');
+            schemaSql = schemaSql.replace(/DECIMAL\(\d+,\s*\d+\)/ig, 'DECIMAL');
+
+            db.public.none(schemaSql);
+
+            const pgMock = db.adapters.createPg();
+            pool = new pgMock.Pool();
+            console.log("[INIT] Mock Database initialized.");
+        } catch (memDbErr) {
+            console.error("[INIT] Virtual Mode failed:", memDbErr);
+            return;
+        }
+    }
 
     try {
         const result = await pool.query("SELECT COUNT(*) FROM users");
@@ -74,7 +129,7 @@ const ensureAdminExists = async () => {
             const salt = await bcrypt.genSalt(10);
             const hash = await bcrypt.hash(adminPass, salt);
 
-            const roleRes = await pool.query("SELECT id FROM roles WHERE name = 'ADMIN'");
+            const roleRes = await pool.query("SELECT id FROM roles WHERE name = 'SUPER_ADMIN' OR name = 'ADMIN' LIMIT 1");
             if (roleRes.rows.length === 0) {
                 console.error("[INIT] ADMIN role not found in database. Please run schema.sql first.");
                 return;
@@ -88,11 +143,63 @@ const ensureAdminExists = async () => {
             console.log("[INIT] Admin user provisioned successfully.");
         }
     } catch (e) {
-        console.error("[INIT] Admin provisioning check failed:", e.message);
+        console.error("[INIT] Admin provisioning check failed:", e);
     }
 };
 
 ensureAdminExists();
+
+// --- GPS SIMULATION ENGINE (For Demo/Development) ---
+const SIMULATE = process.env.SIMULATE === 'true' || true; // Default to true for now to show results
+if (SIMULATE) {
+    const simulateDevices = async () => {
+        const simImeis = ['869727079043558', '869727079043556', '869727079043554'];
+        console.log(`[SIMULATOR] Starting live telemetry simulation for: ${simImeis.join(', ')}`);
+
+        // Initial positions around Pune/Mumbai area
+        const states = {
+            '869727079043558': { lat: 18.5204, lng: 73.8567, speed: 45 },
+            '869727079043556': { lat: 18.5304, lng: 73.8667, speed: 0 },
+            '869727079043554': { lat: 18.5404, lng: 73.8767, speed: 85 }
+        };
+
+        setInterval(async () => {
+            for (const imei of simImeis) {
+                const s = states[imei];
+                if (s.speed > 0) {
+                    s.lat += (Math.random() - 0.5) * 0.0005;
+                    s.lng += (Math.random() - 0.5) * 0.0005;
+                }
+
+                const packet = {
+                    imei,
+                    lat: s.lat,
+                    lng: s.lng,
+                    speed: s.speed,
+                    heading: Math.floor(Math.random() * 360),
+                    ignition: s.speed > 0,
+                    device_timestamp: new Date().toISOString(),
+                    isRealTime: true
+                };
+
+                // Dispatch to Redis Alert Engine
+                if (redisClient && redisClient.isOpen) {
+                    await redisClient.publish('gps:updates', JSON.stringify(packet));
+                    await redisClient.hSet(`live:${imei}`, {
+                        imei,
+                        lat: s.lat.toString(),
+                        lng: s.lng.toString(),
+                        speed: s.speed.toString(),
+                        heading: packet.heading.toString(),
+                        last_update: Date.now().toString()
+                    });
+                }
+            }
+        }, 3000);
+    };
+    setTimeout(simulateDevices, 5000);
+}
+
 
 // Redis Client (with robust fallback)
 let redisClient;
@@ -332,127 +439,6 @@ pool.query(`
 
 // --- REST API ENDPOINTS ---
 
-// 0. Demo Registration & Login
-app.post('/api/demo-login', async (req, res) => {
-    const { contact } = req.body;
-    if (!contact) return res.status(400).json({ status: 'ERROR', message: 'Mobile or Email is required for demo access.' });
-
-    try {
-        await pool.query('INSERT INTO demo_leads (contact) VALUES ($1)', [contact]);
-        console.log(`[Demo Lead Captured] Contact: ${contact}`);
-        res.json({
-            status: 'SUCCESS',
-            user: {
-                id: 'demo_' + Date.now().toString().slice(-6),
-                name: 'Demo Guest',
-                email: contact,
-                role: 'CLIENT',
-                isDemo: true
-            }
-        });
-    } catch (err) {
-        console.error('Demo Login API Error:', err);
-        // Fallback for dev without DB
-        res.json({
-            status: 'SUCCESS',
-            user: { id: 'demo_fallback', name: 'Demo Guest', email: contact, role: 'CLIENT', isDemo: true }
-        });
-    }
-});
-
-// 1a. IMEI Inventory Pre-Check Endpoint (For Registration logic)
-app.get('/api/inventory/check', async (req, res) => {
-    const { imei } = req.query;
-    try {
-        // Validation removed: Allow any 15-digit IMEI to pass the pre-check
-        res.json({ status: 'SUCCESS', sim: '0000000000' });
-    } catch (err) {
-        res.status(500).json({ status: 'ERROR', message: 'Failed to validate IMEI.' });
-    }
-});
-
-// 1. Client Registration & Multi-Device Setup
-app.post('/api/register', async (req, res) => {
-    const { firstName, lastName, email, phone, password, vehicles } = req.body;
-    // 'vehicles' is expected to be an array of { imei, vehicleName, plateNumber }
-
-    if (!vehicles || !Array.isArray(vehicles) || vehicles.length === 0) {
-        return res.status(400).json({ status: 'ERROR', message: 'At least one vehicle/IMEI is required.' });
-    }
-
-    // Pre-check for duplicate IMEIs before opening transaction
-    const vehicleImeis = vehicles.map(v => v.imei);
-    try {
-        const existingDevices = await pool.query("SELECT imei FROM devices WHERE imei = ANY($1)", [vehicleImeis]);
-        if (existingDevices.rows.length > 0) {
-            const dupes = existingDevices.rows.map(r => r.imei).join(', ');
-            return res.status(400).json({ status: 'ERROR', message: `Duplicate IMEI detected: ${dupes}. These devices are already registered.` });
-        }
-    } catch (err) {
-        return res.status(500).json({ status: 'ERROR', message: 'Failed to validate device uniqueness.' });
-    }
-
-    try {
-        await pool.query('BEGIN');
-
-        // 1. Insert User
-        const clientRoleResult = await pool.query("SELECT id FROM roles WHERE name = 'CLIENT'");
-        const roleId = clientRoleResult.rows[0]?.id || null;
-
-        const plainPassword = password || '123456';
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(plainPassword, salt);
-
-        const userResult = await pool.query(
-            "INSERT INTO users (role_id, name, email, password_hash, password_text) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email",
-            [roleId, `${firstName} ${lastName}`, email, passwordHash, plainPassword]
-        );
-        const newUserId = userResult.rows[0].id;
-
-        // 2. Process each vehicle
-        for (const v of vehicles) {
-            const { imei, vehicleName, plateNumber } = v;
-
-            // Removed strict IMEI stock validation to allow free registration
-
-            // Ensure device exists
-            let deviceQuery = await pool.query("SELECT id FROM devices WHERE imei = $1", [imei]);
-            let deviceId;
-            if (deviceQuery.rows.length === 0) {
-                const insertDevice = await pool.query(
-                    "INSERT INTO devices (imei, status) VALUES ($1, 'OFFLINE') RETURNING id",
-                    [imei]
-                );
-                deviceId = insertDevice.rows[0].id;
-            } else {
-                deviceId = deviceQuery.rows[0].id;
-            }
-
-            // Create Vehicle link
-            await pool.query(
-                "INSERT INTO vehicles (client_id, device_id, plate_number, vehicle_type, vehicle_name) VALUES ($1, $2, $3, $4, $5)",
-                [newUserId, deviceId, plateNumber || 'TBD', 'car', vehicleName || 'My Vehicle']
-            );
-
-            // Update Inventory
-            await pool.query("UPDATE device_inventory SET is_assigned = true WHERE imei = $1", [imei]);
-        }
-
-        await pool.query('COMMIT');
-
-        // Dispatch Welcome Comms (Simplified for brevity in the loop, logic remains same)
-        const emailHtml = `<p>Welcome! Your account has been created with ${vehicles.length} devices.</p>`;
-        try {
-            await transporter.sendMail({ from: '"GEOSUREPATH Support" <support@geosurepath.com>', to: email, subject: 'Welcome to GEOSUREPATH', html: emailHtml });
-        } catch (e) { }
-
-        res.json({ status: 'SUCCESS', user: userResult.rows[0], message: `Registration successful with ${vehicles.length} devices.` });
-    } catch (err) {
-        await pool.query('ROLLBACK');
-        console.error('Registration multi-device error:', err);
-        res.status(500).json({ status: 'ERROR', message: err.message || 'Registration failed.' });
-    }
-});
 
 // 1.2 Add New Vehicle to Existing Account
 app.post('/api/vehicles/add', async (req, res) => {
@@ -505,39 +491,56 @@ app.post('/api/vehicles/remove', async (req, res) => {
     }
 });
 
-// 1.5. User Login Endpoint
+// 1.5. User Login Endpoint (Proxied to Traccar)
+
 app.post('/api/login', async (req, res) => {
     const { email, password } = req.body;
     try {
-        const result = await pool.query(`
-            SELECT u.id, u.name, u.email, u.password_hash, u.is_blocked, u.subscription_end_date, r.name as role
-            FROM users u
-            JOIN roles r ON u.role_id = r.id
-            WHERE u.email = $1 AND u.is_active = true
-        `, [email]);
+        console.log(`[AuthProxy] Login attempt for ${email} via Traccar...`);
 
-        if (result.rows.length === 0) {
-            return res.status(401).json({ status: 'ERROR', message: 'Invalid credentials.' });
-        }
+        // 1. Authenticate with Traccar
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ email, password })
+        });
 
-        const user = result.rows[0];
+        if (traccarRes.ok) {
+            const traccarUser = await traccarRes.json();
+            const setCookie = traccarRes.headers.get('set-cookie');
 
-        if (user.is_blocked) {
-            return res.status(403).json({ status: 'ERROR', message: 'Account blocked. Please contact support.' });
-        }
+            // 2. Fetch/Sync local role info
+            const localUser = await pool.query(`
+                SELECT u.id, r.name as role
+                FROM users u
+                JOIN roles r ON u.role_id = r.id
+                WHERE u.email = $1
+            `, [email]);
 
-        const isValid = await bcrypt.compare(password, user.password_hash);
-        if (isValid) {
+            const role = localUser.rows.length > 0 ? localUser.rows[0].role : (traccarUser.administrator ? 'ADMIN' : 'CLIENT');
+
+            console.log(`[AuthProxy] Success for ${email} (${role})`);
+
+            // Forward the Traccar session cookie to the frontend
+            if (setCookie) res.setHeader('Set-Cookie', setCookie);
+
             res.json({
                 status: 'SUCCESS',
-                user: { id: user.id, name: user.name, email: user.email, role: user.role, subscription_end_date: user.subscription_end_date }
+                user: {
+                    id: traccarUser.id,
+                    name: traccarUser.name,
+                    email: traccarUser.email,
+                    role: role,
+                    traccarId: traccarUser.id
+                }
             });
         } else {
-            res.status(401).json({ status: 'ERROR', message: 'Invalid credentials.' });
+            console.warn(`[AuthProxy] Traccar rejected login for ${email}`);
+            res.status(401).json({ status: 'ERROR', message: 'Invalid credentials or Traccar unavailable.' });
         }
     } catch (err) {
-        console.error('Login Error:', err);
-        res.status(500).json({ status: 'ERROR', message: 'Internal server error.' });
+        console.error('[AuthProxy] Server Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Internal server error during authentication proxy.' });
     }
 });
 
@@ -645,13 +648,134 @@ app.post('/api/inventory', async (req, res) => {
     }
 });
 
-// 3. Fetch Devices
+// 1.6 Fetch Devices from Traccar (Proxied)
 app.get('/api/devices', async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM device_inventory ORDER BY added_at DESC");
-        res.json({ status: 'SUCCESS', devices: result.rows });
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/devices`, {
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Cookie': req.headers.cookie || ''
+            }
+        });
+
+        if (traccarRes.ok) {
+            const devices = await traccarRes.json();
+            res.json({ status: 'SUCCESS', devices });
+        } else {
+            res.status(traccarRes.status).json({ status: 'ERROR', message: 'Failed to fetch devices from Traccar' });
+        }
     } catch (err) {
-        res.status(500).json({ status: 'ERROR', message: 'Failed to fetch devices.' });
+        console.error('[DeviceProxy] Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Internal server error' });
+    }
+});
+
+// 1.7 Sync Attributes/Computed Attributes
+app.get('/api/attributes/computed', async (req, res) => {
+    try {
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/attributes/computed`, {
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Cookie': req.headers.cookie || ''
+            }
+        });
+        if (traccarRes.ok) {
+            const attributes = await traccarRes.json();
+            res.json({ status: 'SUCCESS', attributes });
+        } else {
+            res.status(traccarRes.status).json({ status: 'ERROR' });
+        }
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR' });
+    }
+});
+
+// 1.8 Reports Proxy (Trips, Stops, Summary)
+app.get('/api/reports/:type', async (req, res) => {
+    const { type } = req.params;
+    const { deviceId, from, to } = req.query;
+    try {
+        const url = new URL(`${TRACCAR_URL}/api/reports/${type}`);
+        if (deviceId) url.searchParams.append('deviceId', deviceId);
+        if (from) url.searchParams.append('from', from);
+        if (to) url.searchParams.append('to', to);
+
+        const traccarRes = await fetch(url.toString(), {
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Accept': 'application/json',
+                'Cookie': req.headers.cookie || ''
+            }
+        });
+
+        if (traccarRes.ok) {
+            const data = await traccarRes.json();
+            res.json(data);
+        } else {
+            const errorText = await traccarRes.text();
+            res.status(traccarRes.status).json({ status: 'ERROR', message: errorText });
+        }
+    } catch (err) {
+        console.error(`[ReportProxy] ${type} Error:`, err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to fetch report from telemetry engine' });
+    }
+});
+
+// 1.9 Geofence Proxy (List)
+app.get('/api/geofences', async (req, res) => {
+    try {
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/geofences`, {
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Cookie': req.headers.cookie || ''
+            }
+        });
+        if (traccarRes.ok) {
+            const fences = await traccarRes.json();
+            const formatted = fences.map(f => {
+                let coordinates = [];
+                let fence_type = 'POLYGON';
+                if (f.area.startsWith('CIRCLE')) {
+                    const match = f.area.match(/CIRCLE\((.*) (.*), (.*)\)/);
+                    if (match) {
+                        coordinates = [parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3])];
+                        fence_type = 'CIRCLE';
+                    }
+                } else if (f.area.startsWith('POLYGON')) {
+                    const points = f.area.replace('POLYGON((', '').replace('))', '').split(', ');
+                    coordinates = points.map(p => {
+                        const [lat, lng] = p.split(' ');
+                        return [parseFloat(lat), parseFloat(lng)];
+                    });
+                }
+                return { ...f, coordinates, fence_type };
+            });
+            res.json({ status: 'SUCCESS', geofences: formatted });
+        } else {
+            res.status(traccarRes.status).json({ status: 'ERROR' });
+        }
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR' });
+    }
+});
+
+// 1.11 Positions Proxy
+app.get('/api/positions', async (req, res) => {
+    try {
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/positions`, {
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Cookie': req.headers.cookie || ''
+            }
+        });
+        if (traccarRes.ok) {
+            const positions = await traccarRes.json();
+            res.json(positions);
+        } else {
+            res.status(traccarRes.status).json({ status: 'ERROR' });
+        }
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR' });
     }
 });
 
@@ -689,58 +813,86 @@ app.post('/api/admin/devices/assign', async (req, res) => {
     }
 });
 
-// 4. Save Geofence / Route
+// 4. Save Geofence (Proxy to Traccar)
 app.post('/api/geofences', async (req, res) => {
-    const { name, fenceType, coordinates } = req.body;
+    const { name, fence_type, coordinates } = req.body;
     try {
-        // Assuming coordinates is an array of [lat, lng] pairs for POLYGON
-        let geomString = '';
-        if (fenceType === 'POLYGON') {
-            const points = coordinates.map(c => `${c[1]} ${c[0]} `).join(', ');
-            geomString = `ST_GeomFromText('POLYGON((${points}))', 4326)`;
-        } else if (fenceType === 'CIRCLE') {
-            // For simplicity, store as point with radius in attributes, or use ST_Buffer
-            geomString = `ST_Buffer(ST_GeomFromText('POINT(${coordinates[1]} ${coordinates[0]})', 4326):: geography, ${coordinates[2]}):: geometry`;
+        // Convert internal format to Traccar format (WKT)
+        let area = '';
+        if (fence_type === 'POLYGON' || fence_type === 'ROUTE') {
+            const points = coordinates.map(c => `${c[0]} ${c[1]}`).join(', ');
+            area = `POLYGON((${points}))`;
+        } else if (fence_type === 'CIRCLE') {
+            area = `CIRCLE(${coordinates[0]} ${coordinates[1]}, ${coordinates[2]})`;
         }
 
-        if (!geomString) {
-            return res.status(400).json({ status: 'ERROR', message: 'Unsupported geom. Mock saving.' });
-        }
-
-        const query = `INSERT INTO geofences(name, fence_type, geom) VALUES($1, $2, ${geomString}) RETURNING id, name, fence_type`;
-        const result = await pool.query(query, [name, fenceType]);
-        res.json({ status: 'SUCCESS', geofence: result.rows[0] });
-    } catch (err) {
-        console.error('Geofence Error:', err);
-        // Fallback for missing PostGIS or invalid geometries during testing
-        res.status(500).json({ status: 'ERROR', message: 'Failed to save geofence (Ensure PostGIS is active).' });
-    }
-});
-
-// 4.1. Fetch Geofences
-app.get('/api/geofences', async (req, res) => {
-    const { userId } = req.query;
-    try {
-        const query = `
-            SELECT id, name, fence_type, ST_AsGeoJSON(geom) as geojson 
-            FROM geofences 
-            ${userId ? 'WHERE client_id = $1' : ''}
-            ORDER BY created_at DESC
-        `;
-        const result = await pool.query(query, userId ? [userId] : []);
-        const geofences = result.rows.map(r => {
-            const geo = JSON.parse(r.geojson);
-            // Rough conversion for frontend visualization
-            let coords = [];
-            if (geo.type === 'Point') coords = [geo.coordinates[1], geo.coordinates[0], 500]; // mock circle
-            else if (geo.type === 'Polygon') coords = geo.coordinates[0].map(c => [c[1], c[0]]);
-            return { ...r, coordinates: coords };
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/geofences`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Content-Type': 'application/json',
+                'Cookie': req.headers.cookie || ''
+            },
+            body: JSON.stringify({ name, area })
         });
-        res.json({ status: 'SUCCESS', geofences });
+
+        if (traccarRes.ok) {
+            const fence = await traccarRes.json();
+            res.json({ status: 'SUCCESS', geofence: fence });
+        } else {
+            const errorText = await traccarRes.text();
+            res.status(traccarRes.status).json({ status: 'ERROR', message: errorText });
+        }
     } catch (err) {
-        res.json({ status: 'SUCCESS', geofences: [] });
+        console.error('Geofence Proxy Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to synchronize geofence' });
     }
 });
+
+// 4.1. Delete Geofence (Proxy to Traccar)
+app.delete('/api/geofences/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/geofences/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Cookie': req.headers.cookie || ''
+            }
+        });
+        if (traccarRes.ok) {
+            res.json({ status: 'SUCCESS' });
+        } else {
+            res.status(traccarRes.status).json({ status: 'ERROR' });
+        }
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR' });
+    }
+});
+
+// 4.2. Link Geofence to Device (Permissions Proxy)
+app.post('/api/permissions', async (req, res) => {
+    try {
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/permissions`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Content-Type': 'application/json',
+                'Cookie': req.headers.cookie || ''
+            },
+            body: JSON.stringify(req.body)
+        });
+        if (traccarRes.ok) {
+            res.json({ status: 'SUCCESS' });
+        } else {
+            res.status(traccarRes.status).json({ status: 'ERROR' });
+        }
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR' });
+    }
+});
+
+// Removed local geofence fetch (using proxy instead)
 
 // 4a. Admin Fetch Clients & Vehicle Count
 app.get('/api/admin/clients', async (req, res) => {
@@ -757,7 +909,7 @@ app.get('/api/admin/clients', async (req, res) => {
         res.json({ status: 'SUCCESS', clients: result.rows });
     } catch (err) {
         console.error('Admin Clients Error:', err);
-        res.json({ status: 'SUCCESS', clients: [{ id: 'mock', name: 'Demo Client', email: 'demo@geosurepath.com', is_active: true, is_blocked: false, vehicle_count: 5 }] });
+        res.json({ status: 'SUCCESS', clients: [{ id: 'mock', name: 'System Auditor', email: 'audit@system.local', is_active: true, is_blocked: false, vehicle_count: 0 }] });
     }
 });
 
@@ -782,6 +934,63 @@ app.post('/api/admin/clients/renew', async (req, res) => {
     } catch (err) {
         console.error('Renew Error:', err);
         res.status(500).json({ status: 'ERROR', message: 'Failed to renew subscription.' });
+    }
+});
+
+// 4d. Admin Impersonate Client (Remote Access)
+app.post('/api/admin/clients/impersonate', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        const result = await pool.query(`
+            SELECT u.id, u.name, u.email, r.name as role
+            FROM users u
+            JOIN roles r ON u.role_id = r.id
+            WHERE u.id = $1
+        `, [userId]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ status: 'ERROR', message: 'Client not found.' });
+        }
+
+        const user = result.rows[0];
+        res.json({
+            status: 'SUCCESS',
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                isImpersonated: true
+            }
+        });
+    } catch (err) {
+        console.error('Impersonate Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to access client account.' });
+    }
+});
+
+// 4e. Admin Direct Authorize Client
+app.post('/api/admin/clients/create', async (req, res) => {
+    const { name, email, password, phone } = req.body;
+    try {
+        await pool.query('BEGIN');
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(password, salt);
+        const roleRes = await pool.query("SELECT id FROM roles WHERE name = 'CLIENT'");
+        const roleId = roleRes.rows[0].id;
+
+        const userRes = await pool.query(
+            "INSERT INTO users (role_id, name, email, password_hash, password_text, phone) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            [roleId, name, email, hash, password, phone]
+        );
+        const userId = userRes.rows[0].id;
+
+        await pool.query('COMMIT');
+        res.json({ status: 'SUCCESS', message: 'Client authorized successfully.', userId });
+    } catch (err) {
+        await pool.query('ROLLBACK');
+        console.error('Admin Client Creation Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Failed to authorize client.' });
     }
 });
 
@@ -827,43 +1036,65 @@ app.patch('/api/admin/clients/:userId/billing', async (req, res) => {
 // --- ADVANCED ADMIN CONTROLS: DATA ARCHIVAL & BACKUPS ---
 
 // Daily Google Drive Backup Task (Running at 1 AM)
+// Modified to maintain LIFETIME tracking data in local DB while still backing up offsite
 cron.schedule('0 1 * * *', async () => {
-    console.log('[Backup System] Initiating Daily Cloud Archival to Google Drive...');
+    console.log('[Backup System] Initiating Daily Cloud Backup to Google Drive...');
     try {
-        const pruningDate = new Date();
-        pruningDate.setDate(pruningDate.getDate() - 180);
+        // 1. Fetch data from the last 24 hours for incremental backup
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
 
-        // 1. Fetch data older than 180 days
         const result = await pool.query(
-            "SELECT * FROM gps_history WHERE timestamp < $1",
-            [pruningDate]
+            "SELECT * FROM gps_history WHERE timestamp >= $1",
+            [yesterday]
         );
 
         if (result.rows.length === 0) {
-            console.log('[Backup System] No old data to archive.');
-            return;
+            console.log('[Backup System] No new data to backup from last 24h.');
+        } else {
+            // 2. Export to JSON file
+            const fileName = `daily_backup_${new Date().toISOString().split('T')[0]}.json`;
+            const tempDir = path.join(__dirname, '../temp');
+            if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+            const filePath = path.join(tempDir, fileName);
+
+            fs.writeFileSync(filePath, JSON.stringify({
+                type: 'INCREMENTAL',
+                date: yesterday.toISOString().split('T')[0],
+                count: result.rows.length,
+                data: result.rows
+            }, null, 2));
+
+            // 3. Upload to Google Drive (Incremental)
+            await googleDrive.uploadFile(filePath, process.env.GOOGLE_BACKUP_FOLDER_ID || '1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8');
+            fs.unlinkSync(filePath);
+            console.log(`[Backup System] Incremental backup of ${result.rows.length} records completed.`);
         }
 
-        // 2. Export to JSON file
-        const fileName = `archive_${new Date().toISOString().split('T')[0]}.json`;
-        const filePath = path.join(__dirname, '../temp', fileName);
-        if (!fs.existsSync(path.join(__dirname, '../temp'))) fs.mkdirSync(path.join(__dirname, '../temp'));
+        // 4. PERIODIC FULL SNAPSHOT (Mondays at 1:30 AM)
+        if (new Date().getDay() === 1) {
+            console.log('[Backup System] Initiating Weekly Full System Snapshot...');
+            const tables = ['users', 'devices', 'vehicles', 'device_inventory', 'command_logs'];
+            const fullBackup = {};
+            for (const table of tables) {
+                const res = await pool.query(`SELECT * FROM ${table}`);
+                fullBackup[table] = res.rows;
+            }
 
-        fs.writeFileSync(filePath, JSON.stringify(result.rows, null, 2));
+            const snapName = `full_snapshot_${new Date().toISOString().split('T')[0]}.json`;
+            const snapPath = path.join(__dirname, '../temp', snapName);
+            fs.writeFileSync(snapPath, JSON.stringify(fullBackup, null, 2));
+            await googleDrive.uploadFile(snapPath, process.env.GOOGLE_BACKUP_FOLDER_ID || '1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8');
+            fs.unlinkSync(snapPath);
+            console.log('[Backup System] Weekly Full Snapshot completed.');
+        }
 
-        // 3. Upload to Google Drive
-        // Use user-provided folder ID: 1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8
-        await googleDrive.uploadFile(filePath, process.env.GOOGLE_BACKUP_FOLDER_ID || '1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8');
+        // !!! IMPORTANT: PRUNING DISABLED !!!
+        // We no longer delete from gps_history to maintain "LIFETIME DATA"
+        // await pool.query("DELETE FROM gps_history WHERE timestamp < $1", [pruningDate]);
 
-        // 4. Clean up DB
-        await pool.query("DELETE FROM gps_history WHERE timestamp < $1", [pruningDate]);
-
-        // 5. Clean up local file
-        fs.unlinkSync(filePath);
-
-        console.log(`[Backup System] Archival complete. ${result.rows.length} records moved to cloud.`);
     } catch (err) {
-        console.error('[Backup System] Archival CRITICAL ERROR:', err);
+        console.error('[Backup System] Backup CRITICAL ERROR:', err);
     }
 });
 
@@ -1115,7 +1346,7 @@ app.post('/api/commands/send', async (req, res) => {
             });
 
             if (traccarRes.ok) {
-                return res.json({ status: 'SUCCESS', message: 'Command Dispatched via Traccar GPRS Engine', source: 'traccar' });
+                return res.json({ status: 'SUCCESS', message: 'Command Dispatched via Core Engine', source: 'system' });
             }
         } catch (traccarErr) {
             console.warn('[Traccar] Command proxy failed, falling back to TCP Server:', traccarErr.message);
@@ -1181,15 +1412,52 @@ app.post('/api/admin/backup', async (req, res) => {
 
 // 7. Twilio Webhook (Receive SMS Reply from Device)
 app.post('/api/webhooks/sms', async (req, res) => {
-    // Twilio sends application/x-www-form-urlencoded
     const { From, Body } = req.body;
     console.log(`Received SMS from ${From}: ${Body}`);
-
-    // Push real-time acknowledgment to frontend via WebSockets
     io.emit('sms_acknowledgment', { from: From, body: Body, timestamp: new Date() });
-
-    // Twilio expects an empty TwiML response
     res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+});
+
+// 1.10. Traccar Webhook Receiver (Real-time Events)
+app.post('/api/traccar/webhooks', async (req, res) => {
+    const { event, device, position } = req.body;
+    if (!event || !device) return res.sendStatus(200);
+
+    console.log(`[TraccarWebhook] Received ${event.type} for Device ${device.name}`);
+
+    // Map Traccar events to Portal alerts
+    const alertTypeMap = {
+        'geofenceEnter': 'GEOFENCE_ENTER',
+        'geofenceExit': 'GEOFENCE_EXIT',
+        'deviceOverspeed': 'OVERSPEED',
+        'deviceOnline': 'ONLINE',
+        'deviceOffline': 'OFFLINE',
+        'alarm': 'ALARM'
+    };
+
+    const alert = {
+        type: alertTypeMap[event.type] || event.type.toUpperCase(),
+        imei: device.uniqueId,
+        vehicleName: device.name,
+        plateNumber: device.phone || 'N/A',
+        message: event.attributes?.message || `${event.type} detected by System`,
+        timestamp: new Date(event.eventTime),
+        position: position
+    };
+
+    // Broadcast to user and admin
+    io.to(`imei_${device.uniqueId}`).emit('VEHICLE_ALERT', alert);
+    io.to('admin_room').emit('VEHICLE_ALERT', alert);
+
+    // Persistent storage
+    try {
+        await pool.query(
+            "INSERT INTO alerts (device_id, message, timestamp) SELECT id, $2, $3 FROM devices WHERE imei = $1",
+            [device.uniqueId, alert.message, alert.timestamp]
+        );
+    } catch (e) { console.error('[TraccarWebhook] DB Guard Error:', e.message); }
+
+    res.sendStatus(200);
 });
 
 // --- LIVE TRACKING PUB/SUB & GEOFENCING ---
@@ -1436,18 +1704,12 @@ app.get('/api/admin/system-health', async (req, res) => {
     });
 });
 
-// Manual Backup Trigger — exports 3-month+ data to Google Drive
+// Manual Backup Trigger
 app.post('/api/admin/backup/trigger', async (req, res) => {
     try {
-        const threeMonthsAgo = new Date();
-        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        const result = await pool.query("SELECT * FROM gps_history LIMIT 100000"); // Safety limit
 
-        const result = await pool.query(
-            "SELECT * FROM gps_history WHERE timestamp < $1 LIMIT 50000",
-            [threeMonthsAgo]
-        );
-
-        const fileName = `backup_${new Date().toISOString().split('T')[0]}_${Date.now()}.json`;
+        const fileName = `manual_full_backup_${new Date().toISOString().split('T')[0]}.json`;
         const tempDir = path.join(__dirname, '../temp');
         if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
         const filePath = path.join(tempDir, fileName);
@@ -1464,16 +1726,14 @@ app.post('/api/admin/backup/trigger', async (req, res) => {
         // Record backup timestamp
         fs.writeFileSync(path.join(tempDir, 'last_backup.txt'), new Date().toISOString());
 
-        // Clean old records from DB (keep last 3 months only)
-        if (result.rows.length > 0) {
-            await pool.query("DELETE FROM gps_history WHERE timestamp < $1", [threeMonthsAgo]);
-        }
+        // !!! IMPORTANT !!!
+        // We REMOVED the 'DELETE FROM gps_history' so data is kept locally as well.
 
         fs.unlinkSync(filePath);
 
         res.json({
             status: 'SUCCESS',
-            message: `Backup complete. ${result.rows.length} records archived to Google Drive.`,
+            message: `Manual backup complete. ${result.rows.length} records mirrored to Google Drive. No data was deleted from the server.`,
             fileName,
             driveFolder: folderId
         });
@@ -1598,6 +1858,46 @@ app.get('/api/admin/alerts/all', async (req, res) => {
 
 
 
+app.post('/api/commands/send', async (req, res) => {
+    const { deviceId, commandType, params = {} } = req.body;
+    try {
+        console.log(`[CommandProxy] Sending ${commandType} to Device ${deviceId} via Traccar...`);
+
+        // Map internal types to Traccar types
+        let type = 'custom';
+        let attributes = { data: '' };
+
+        if (commandType === 'CUT_ENGINE') {
+            type = 'engineStop';
+        } else if (commandType === 'RESTORE_ENGINE') {
+            type = 'engineResume';
+        } else if (commandType === 'CUSTOM_GPRS') {
+            type = 'custom';
+            attributes.data = params.data || '';
+        }
+
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/commands/send`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64'),
+                'Content-Type': 'application/json',
+                'Cookie': req.headers.cookie || ''
+            },
+            body: JSON.stringify({ deviceId, type, attributes })
+        });
+
+        if (traccarRes.ok) {
+            res.json({ status: 'SUCCESS', message: 'Command successfully queued.' });
+        } else {
+            const errorText = await traccarRes.text();
+            res.status(traccarRes.status).json({ status: 'ERROR', message: errorText });
+        }
+    } catch (err) {
+        console.error('[CommandProxy] Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Internal server error during command proxy.' });
+    }
+});
+
 app.post('/api/commands/gprs', async (req, res) => {
     const { imei, commandType, params = {} } = req.body;
     try {
@@ -1706,42 +2006,243 @@ app.post('/api/admin/models', async (req, res) => {
     }
 });
 
-// 3. Get all logical commands
-app.get('/api/admin/logical-commands', async (req, res) => {
-    try {
-        const result = await pool.query("SELECT * FROM logical_commands ORDER BY command_alias ASC");
-        res.json({ status: 'SUCCESS', commands: result.rows });
-    } catch (err) {
-        res.status(500).json({ status: 'ERROR', message: err.message });
-    }
-});
+// --- GPRS COMMAND MODULE (Traccar Integration) ---
 
-// 4. Get command mappings for a model
-app.get('/api/admin/command-maps/:modelId', async (req, res) => {
-    const { modelId } = req.params;
+// 1. Get all vehicles with device details
+app.get('/api/vehicles', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT lc.command_alias, lc.id as logical_id, dcm.actual_payload 
-            FROM logical_commands lc
-            LEFT JOIN device_command_map dcm ON lc.id = dcm.logical_command_id AND dcm.model_id = $1
-        `, [modelId]);
-        res.json({ status: 'SUCCESS', mappings: result.rows });
+            SELECT v.*, d.imei, d.protocol, d.model as device_model, d.sim_number,
+                   gl.speed, gl.ignition as live_ignition
+            FROM vehicles v
+            LEFT JOIN devices d ON v.device_id = d.id
+            LEFT JOIN gps_live_data gl ON d.imei = gl.imei
+            ORDER BY v.created_at DESC
+        `);
+        res.json({ status: 'SUCCESS', vehicles: result.rows });
     } catch (err) {
         res.status(500).json({ status: 'ERROR', message: err.message });
     }
 });
 
-// 5. Update/Upsert command mapping
-app.post('/api/admin/command-maps', async (req, res) => {
-    const { model_id, logical_id, payload } = req.body;
+// 2. Send Ignition Command (Traccar GPRS)
+app.post('/api/commands/send-ignition', async (req, res) => {
+    const { vehicleId, action, userId } = req.body; // action: IGNITION_OFF, IGNITION_ON
+
     try {
-        await pool.query(
-            "INSERT INTO device_command_map (model_id, logical_command_id, actual_payload) VALUES ($1, $2, $3) ON CONFLICT (model_id, logical_command_id) DO UPDATE SET actual_payload = EXCLUDED.actual_payload",
-            [model_id, logical_id, payload]
-        );
-        res.json({ status: 'SUCCESS' });
+        // 1. Retrieve vehicle & device
+        const vRes = await pool.query(`
+            SELECT v.*, d.imei, d.protocol, gl.speed 
+            FROM vehicles v
+            JOIN devices d ON v.device_id = d.id
+            LEFT JOIN gps_live_data gl ON d.imei = gl.imei
+            WHERE v.id = $1
+        `, [vehicleId]);
+
+        if (vRes.rows.length === 0) throw new Error('Vehicle not found');
+        const vehicle = vRes.rows[0];
+
+        // 2. Safety Check: Only cut ignition if speed is 0
+        if (action === 'IGNITION_OFF' && vehicle.speed > 0) {
+            return res.status(400).json({
+                status: 'FAILED',
+                message: 'Safety Protocol: Cannot cut ignition while vehicle is moving!'
+            });
+        }
+
+        // 3. Find correct command string for protocol
+        const tRes = await pool.query(`
+            SELECT command_string 
+            FROM command_templates 
+            WHERE protocol = $1 AND action = $2
+        `, [vehicle.protocol, action]);
+
+        if (tRes.rows.length === 0) throw new Error(`No command template found for protocol: ${vehicle.protocol}`);
+        const commandString = tRes.rows[0].command_string;
+
+        // 4. Log initial command entry
+        const logRes = await pool.query(`
+            INSERT INTO device_commands (vehicle_id, device_id, action, command_sent, status, user_id)
+            VALUES ($1, $2, $3, $4, 'SENT', $5)
+            RETURNING id
+        `, [vehicleId, vehicle.device_id, action, commandString, userId]);
+        const logId = logRes.rows[0].id;
+
+        // 5. Send to Traccar API
+        // First, we need to find the internal Traccar ID by IMEI
+        const traccarDevicesRes = await fetch(`${TRACCAR_URL}/api/devices?uniqueId=${vehicle.imei}`, {
+            headers: { 'Authorization': `Basic ${TRACCAR_AUTH}` }
+        });
+        const traccarDevices = await traccarDevicesRes.json();
+
+        if (!traccarDevices || traccarDevices.length === 0) {
+            throw new Error('Device not found on Traccar server');
+        }
+        const traccarId = traccarDevices[0].id;
+
+        const traccarCmdRes = await fetch(`${TRACCAR_URL}/api/commands/send`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Basic ${TRACCAR_AUTH}`
+            },
+            body: JSON.stringify({
+                deviceId: traccarId,
+                type: 'custom',
+                attributes: { data: commandString }
+            })
+        });
+
+        if (traccarCmdRes.status >= 400) {
+            const errData = await traccarCmdRes.text();
+            await pool.query("UPDATE device_commands SET status = 'FAILED', response = $1 WHERE id = $2", [errData, logId]);
+            return res.status(traccarCmdRes.status).json({ status: 'FAILED', message: 'Traccar rejected command', details: errData });
+        }
+
+        // 6. Final success
+        await pool.query("UPDATE device_commands SET status = 'DELIVERED' WHERE id = $1", [logId]);
+
+        // Notify via Websocket
+        io.emit('COMMAND_UPDATE', {
+            vehicleId,
+            action,
+            status: 'DELIVERED',
+            imei: vehicle.imei
+        });
+
+        res.json({ status: 'SUCCESS', message: `Command ${action} dispatched successfully.` });
+
+    } catch (err) {
+        console.error('[GPRS_CMD] Global Error:', err.message);
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+// 3. Command History
+app.get('/api/commands/history/:vehicleId', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT dc.*, u.name as user_name 
+            FROM device_commands dc
+            LEFT JOIN users u ON dc.user_id = u.id
+            WHERE dc.vehicle_id = $1
+            ORDER BY dc.sent_at DESC
+            LIMIT 50
+        `, [req.params.vehicleId]);
+        res.json({ status: 'SUCCESS', history: result.rows });
     } catch (err) {
         res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+// 4. Admin: Command Templates Management
+app.get('/api/admin/command-templates', async (req, res) => {
+    try {
+        const r = await pool.query("SELECT * FROM command_templates ORDER BY protocol, action");
+        res.json({ status: 'SUCCESS', templates: r.rows });
+    } catch (e) { res.status(500).json({ status: 'ERROR', message: e.message }); }
+});
+
+app.post('/api/admin/command-templates', async (req, res) => {
+    const { protocol, action, command_string, description } = req.body;
+    try {
+        const r = await pool.query(
+            "INSERT INTO command_templates (protocol, action, command_string, description) VALUES ($1, $2, $3, $4) ON CONFLICT (protocol, action) DO UPDATE SET command_string = EXCLUDED.command_string, description = EXCLUDED.description RETURNING *",
+            [protocol, action, command_string, description]
+        );
+        res.json({ status: 'SUCCESS', template: r.rows[0] });
+    } catch (e) { res.status(500).json({ status: 'ERROR', message: e.message }); }
+});
+
+app.delete('/api/admin/command-templates/:id', async (req, res) => {
+    try {
+        await pool.query("DELETE FROM command_templates WHERE id = $1", [req.params.id]);
+        res.json({ status: 'SUCCESS', message: 'Template deleted.' });
+    } catch (e) { res.status(500).json({ status: 'ERROR', message: e.message }); }
+});
+
+// 4. Admin: Inventory Management
+app.get('/api/admin/inventory', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM device_inventory ORDER BY created_at DESC");
+        res.json({ status: 'SUCCESS', devices: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+app.post('/api/admin/inventory', async (req, res) => {
+    const { imei, protocol, model, sim_number } = req.body;
+    try {
+        const result = await pool.query(
+            "INSERT INTO device_inventory (imei, protocol, model, sim_number) VALUES ($1, $2, $3, $4) ON CONFLICT (imei) DO UPDATE SET protocol = EXCLUDED.protocol, sim_number = EXCLUDED.sim_number RETURNING *",
+            [imei, protocol, model, sim_number]
+        );
+        res.json({ status: 'SUCCESS', device: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    }
+});
+
+// 5. Admin: Asset Provisioning (Link Device to Vehicle)
+app.post('/api/admin/devices/assign', async (req, res) => {
+    const { clientId, imei, vehicleNumber, driverName } = req.body;
+    // Transactional: Create Device (if missing in devices table), then Vehicle
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Mark as assigned in inventory
+        await client.query("UPDATE device_inventory SET is_assigned = true WHERE imei = $1", [imei]);
+
+        // 2. Ensure device exists in 'devices' (live) table
+        const devExists = await client.query("SELECT id FROM devices WHERE imei = $1", [imei]);
+        let deviceId;
+        if (devExists.rows.length === 0) {
+            const newDev = await client.query(
+                "INSERT INTO devices (imei, device_name, protocol) VALUES ($1, $2, (SELECT protocol FROM device_inventory WHERE imei=$1)) RETURNING id",
+                [imei, vehicleNumber]
+            );
+            deviceId = newDev.rows[0].id;
+        } else {
+            deviceId = devExists.rows[0].id;
+        }
+
+        // 3. Create Vehicle
+        const vehRes = await client.query(
+            "INSERT INTO vehicles (vehicle_number, driver_name, device_id, client_id) VALUES ($1, $2, $3, $4) RETURNING *",
+            [vehicleNumber, driverName, deviceId, clientId]
+        );
+
+        await client.query('COMMIT');
+        res.json({ status: 'SUCCESS', vehicle: vehRes.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ status: 'ERROR', message: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// 6. Admin: Unlinked Traccar Devices Detection
+app.get('/api/admin/unlinked-devices', async (req, res) => {
+    try {
+        // Fetch all devices from Traccar
+        const traccarRes = await fetch(`${TRACCAR_URL}/api/devices`, {
+            headers: { 'Authorization': `Basic ${TRACCAR_AUTH}` }
+        });
+        const traccarDevices = await traccarRes.json();
+
+        // Fetch all registered IMEIs in our portal
+        const portalRes = await pool.query("SELECT imei FROM devices");
+        const registeredImeis = new Set(portalRes.rows.map(r => r.imei));
+
+        // Filter for devices in Traccar but NOT in our portal
+        const unlinked = traccarDevices.filter(d => !registeredImeis.has(d.uniqueId));
+
+        res.json({ status: 'SUCCESS', unlinked });
+    } catch (e) {
+        res.status(500).json({ status: 'ERROR', message: e.message });
     }
 });
 

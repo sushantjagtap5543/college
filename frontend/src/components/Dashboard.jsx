@@ -41,13 +41,13 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
     ? 'http://localhost:8080'
     : `${window.location.protocol}//${window.location.hostname}`;
 
-export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
+export default function Dashboard({ type = 'CLIENT', fleet = [], user, onLogin }) {
     const [clients, setClients] = useState([]);
     const [inventory, setInventory] = useState([]);
     const [isAddingDevice, setIsAddingDevice] = useState(false);
     const [newDevice, setNewDevice] = useState({ imei: '', sim: '', protocol: 'GT06' });
     const [isAssigning, setIsAssigning] = useState(false);
-    const [assignForm, setAssignForm] = useState({ clientId: '', imei: '', plateNumber: '', vehicleType: 'car' });
+    const [assignForm, setAssignForm] = useState({ clientId: '', imei: '', vehicleNumber: '', driverName: '' });
     const [isLoading, setIsLoading] = useState(type === 'ADMIN');
 
     // SMS Dispatch State
@@ -138,7 +138,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
         try {
             const [clientRes, invRes] = await Promise.all([
                 fetch(`${API_BASE}/api/admin/clients`),
-                fetch(`${API_BASE}/api/devices`)
+                fetch(`${API_BASE}/api/admin/inventory`)
             ]);
             const clientData = await clientRes.json();
             const invData = await invRes.json();
@@ -184,10 +184,10 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
     const handleAddInventory = async (e) => {
         e.preventDefault();
         try {
-            const req = await fetch(`${API_BASE}/api/inventory`, {
+            const req = await fetch(`${API_BASE}/api/admin/inventory`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...newDevice, status: 'Unassigned' })
+                body: JSON.stringify({ ...newDevice })
             });
             const data = await req.json();
             if (data.status === 'SUCCESS') {
@@ -212,7 +212,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             if (data.status === 'SUCCESS') {
                 fetchAdminData();
                 setIsAssigning(false);
-                setAssignForm({ clientId: '', imei: '', plateNumber: '', vehicleType: 'car' });
+                setAssignForm({ clientId: '', imei: '', vehicleNumber: '', driverName: '' });
             }
         } catch (err) {
             alert('Failed to assign device.');
@@ -356,6 +356,7 @@ export default function Dashboard({ type = 'CLIENT', fleet = [], user }) {
             handleUpdateClient={handleUpdateClient}
             handleUpdateBilling={handleUpdateBilling}
             API_BASE={API_BASE}
+            onLogin={onLogin}
         />;
     }
 

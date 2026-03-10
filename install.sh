@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# GeoSurePath GPS Platform — AWS Lightsail Production Deployment Script
+# Strategic GPS Platform — AWS Lightsail Production Deployment Script
 # Optimized for: 2GB RAM Instances (Ubuntu 22.04 LTS)
 # =============================================================================
 
@@ -13,14 +13,14 @@ info() { echo -e "${CYAN}[→] $1${NC}"; }
 err()  { echo -e "${RED}[✗] $1${NC}"; exit 1; }
 
 echo -e "${CYAN}"
-echo "  GeoSurePath GPS Tracking Platform"
+echo "  SaaS GPS Tracking Platform"
 echo "  Production Deployment Script (AWS Lightsail Optimized)"
 echo -e "${NC}"
 
 # ── 0. Root Check & Workspace ──────────────────────────────────────────────────
 [ "$EUID" -ne 0 ] && err "Please run as root: sudo bash install.sh"
 
-APP_DIR="/opt/geosurepath"
+APP_DIR="/opt/gps-platform"
 REPO_URL="https://github.com/sushantjagtap5543/college.git"
 
 # ── 1. RAM Optimization (Swap Creation) ───────────────────────────────────────
@@ -97,7 +97,8 @@ REDIS_HOST=redis
 JWT_SECRET=$(openssl rand -base64 32)
 NODE_ENV=production
 PORT=8080
-ADMIN_EMAIL=admin@geosurepath.com
+PORTAL_NAME=GeoSurePath
+ADMIN_EMAIL=cadmin@geosurepath.com
 ADMIN_PASSWORD=admin@123
 GOOGLE_BACKUP_FOLDER_ID=1xR_DVXjm78URhz9gnbkOM1ERLARM-wN8
 ENVEOF
@@ -116,7 +117,7 @@ log "Services started successfully"
 info "Configuring Nginx Reverse Proxy..."
 SERVER_IP=$(curl -s http://checkip.amazonaws.com || echo "3.108.114.12")
 
-cat > /etc/nginx/sites-available/geosurepath <<NGINXEOF
+cat > /etc/nginx/sites-available/gps-platform <<NGINXEOF
 server {
     listen 80;
     server_name _;
@@ -161,18 +162,18 @@ server {
 }
 NGINXEOF
 
-ln -sf /etc/nginx/sites-available/geosurepath /etc/nginx/sites-enabled/
+ln -sf /etc/nginx/sites-available/gps-platform /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl reload nginx
 log "Nginx Proxy Active"
 
 # ── 9. Final Summary ──────────────────────────────────────────────────────────
 echo -e "\n${GREEN}================================================================${NC}"
-echo -e "${GREEN}   GeoSurePath Deployment Complete! 🚀                          ${NC}"
+echo -e "${GREEN}   GPS Platform Deployment Complete! 🚀                         ${NC}"
 echo -e "${GREEN}================================================================${NC}"
 echo -e "\nAccess URLs:"
 echo -e "  Main Portal: http://${SERVER_IP}"
-echo -e "  Admin Login: admin@geosurepath.com / admin@123"
+echo -e "  Admin Login: cadmin@geosurepath.com / admin@123"
 echo -e "\nImportant Ports:"
 echo -e "  5000 (TCP) -> Main GPS Gateway"
 echo -e "  5023 (TCP) -> GT06 Gateway"

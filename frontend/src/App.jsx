@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
 import CommandCenter from './components/CommandCenter';
+import Maintenance from './components/Maintenance';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Map as MapIcon, Shield, Activity, Users, Settings as SettingsIcon, LogIn, ChevronRight,
@@ -13,7 +14,7 @@ import {
     FileText, CreditCard, Droplet, LayoutDashboard, Zap, Menu, X, Hexagon, Route as RouteIcon,
     TrendingDown, CheckSquare, Wrench, FolderOpen, UserCircle, Briefcase, Share2, FileWarning, Smartphone, Monitor, Rocket, Server, DollarSign,
     Play, Pause, FastForward, SkipBack, Rewind, Calendar as CalendarIcon, History,
-    Gauge, Power, MapPin, RefreshCcw, Plus, KeyRound, Eye, EyeOff, Hash, AlertCircle, SlidersHorizontal
+    Gauge, Power, MapPin, RefreshCcw, Plus, KeyRound, Eye, EyeOff, Hash, AlertCircle, SlidersHorizontal, BarChart3, Circle as CircleIcon, Target
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, ZoomControl, Polyline, LayerGroup, useMap, useMapEvents, Circle, Rectangle, Polygon } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -52,24 +53,17 @@ function MapController({ panTo }) {
     return null;
 }
 
-// --- Dynamic API Base URLs to support both local dev and AWS deployment ---
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:8080'
-    : `${window.location.protocol}//${window.location.hostname}`;
+import CONFIG from './config';
+const API_BASE = CONFIG.API_URL;
+const WS_BASE = CONFIG.WS_URL;
 
-const WS_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'ws://localhost:8080'
-    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}`;
-
-const TRACCAR_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:8082'
-    : `${window.location.protocol}//${window.location.hostname}/traccar`;
+// Traccar calls are now proxied through the backend /api/ endpoints to avoid CORS and credential exposure
 
 // --- VEHICLE COLOR PALETTE (8 distinct colors for up to 8 vehicles) ---
 const VEHICLE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#f97316'];
 const getVehicleColor = (idx) => VEHICLE_COLORS[idx % VEHICLE_COLORS.length];
 
-// --- ALL GPS ALERT TYPES (GEOSUREPATH-style) ---
+// --- ALL GPS ALERT TYPES (DYNAMIC-style) ---
 const ALERT_TYPES = {
     IGNITION_ON: { label: 'Ignition ON', icon: '🔑', color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', severity: 'info' },
     IGNITION_OFF: { label: 'Ignition OFF', icon: '🔌', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', severity: 'info' },
@@ -99,7 +93,7 @@ import {
     setVehicleIconPref,
     getVehicleColorPref,
     setVehicleColorPref
-} from './utils/statusIcons';
+} from './utils/statusIcons.jsx';
 import {
     TONES,
     getSavedToneId,
@@ -269,7 +263,7 @@ const WiringAnimation = () => (
             <g transform="translate(210, 230)">
                 <rect x="-40" y="-45" width="80" height="90" rx="12" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
                 <rect x="-30" y="-35" width="60" height="22" rx="6" fill="#071810" stroke="#10b981" strokeWidth="1" opacity="0.8" />
-                <text x="0" y="-20" fill="#10b981" fontSize="8" fontWeight="900" textAnchor="middle">GeoSurePath</text>
+                <text x="0" y="-20" fill="#10b981" fontSize="8" fontWeight="900" textAnchor="middle">{CONFIG.PORTAL_NAME}</text>
                 {/* Wire connector ports */}
                 <rect x="-44" y="-12" width="8" height="6" rx="2" fill="#ef4444" />
                 <rect x="-44" y="0" width="8" height="6" rx="2" fill="#475569" />
@@ -367,7 +361,7 @@ const WiringAnimation = () => (
                 <circle cx="2" cy="-15" r="15" fill="#083321" opacity="0.9" />
                 <circle cx="20" cy="-8" r="15" fill="#083321" opacity="0.85" />
                 <rect x="-32" y="-8" width="64" height="22" fill="#083321" />
-                <text x="0" y="6" fill="#10b981" fontSize="9" fontWeight="900" textAnchor="middle">GeoSurePath</text>
+                <text x="0" y="6" fill="#10b981" fontSize="9" fontWeight="900" textAnchor="middle">{CONFIG.PORTAL_NAME}</text>
                 <text x="0" y="-48" fill="#10b981" fontSize="8" fontWeight="700" textAnchor="middle" letterSpacing="1">PLATFORM</text>
                 <circle cx="-24" cy="28" r="5" fill="#10b981">
                     <animate attributeName="opacity" values="1;0.2;1" dur="1s" repeatCount="indefinite" />
@@ -480,41 +474,8 @@ const OnboardingFlow = () => (
 
 const LandingPage = ({ onLogin }) => {
     const navigate = useNavigate();
-    const [showDemoModal, setShowDemoModal] = useState(false);
-    const [demoContact, setDemoContact] = useState('');
-    const [isDemoLoading, setIsDemoLoading] = useState(false);
-    const [demoError, setDemoError] = useState('');
 
-    const handleDemoStart = async (e) => {
-        e.preventDefault();
-        if (!demoContact) {
-            setDemoError("Please enter your email or mobile number.");
-            return;
-        }
-        setIsDemoLoading(true);
-        setDemoError('');
-        try {
-            const req = await fetch(`${API_BASE}/api/demo-login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contact: demoContact })
-            });
-            const data = await req.json();
-            if (data.status === 'SUCCESS') {
-                if (onLogin) onLogin(data.user);
-                navigate('/client');
-            } else {
-                setDemoError(data.message || 'Failed to start demo.');
-            }
-        } catch (err) {
-            console.error('Demo fetch error:', err);
-            // Fallback for dev without DB connectivity
-            if (onLogin) onLogin({ id: 'demo_local', name: 'Demo Guest', email: demoContact, role: 'CLIENT', isDemo: true });
-            navigate('/client');
-        } finally {
-            setIsDemoLoading(false);
-        }
-    };
+
 
     return (
         <div className="min-h-screen flex flex-col relative bg-black font-sans selection:bg-[#10b981] selection:text-black text-white overflow-hidden">
@@ -522,11 +483,15 @@ const LandingPage = ({ onLogin }) => {
             {/* --- PREMIUM NAVBAR --- */}
             <header className="px-6 md:px-12 py-4 flex justify-between items-center z-50 bg-black/60 backdrop-blur-2xl sticky top-0 border-b border-white/5 transition-all duration-300">
                 <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-                    <img src="/logo.png" alt="GeoSurePath" className="w-9 h-9 rounded-xl shadow-[0_0_16px_rgba(16,185,129,0.35)] group-hover:scale-110 transition-transform object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+                    <img src="/logo.png" alt={CONFIG.PORTAL_NAME} className="w-9 h-9 rounded-xl shadow-[0_0_16px_rgba(16,185,129,0.35)] group-hover:scale-110 transition-transform object-cover" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
                     <div className="hidden bg-[#10b981] p-2 rounded-xl shadow-[0_0_16px_rgba(16,185,129,0.35)] group-hover:scale-110 transition-transform items-center justify-center">
                         <MapIcon className="text-black" size={20} />
                     </div>
-                    <span className="font-black text-2xl tracking-tighter hidden sm:block">GEOSURE<span className="text-[#10b981]">PATH</span></span>
+                    <span className="font-black text-2xl tracking-tighter hidden sm:block">
+                        {CONFIG.PORTAL_NAME.split(/(?=[A-Z])/).map((part, i) => (
+                            <span key={i} className={i === 1 ? 'text-[#10b981]' : ''}>{part.toUpperCase()}</span>
+                        ))}
+                    </span>
                 </div>
 
                 <nav className="hidden lg:flex items-center gap-10 font-black text-xs uppercase tracking-widest text-slate-500">
@@ -536,8 +501,7 @@ const LandingPage = ({ onLogin }) => {
                 </nav>
 
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate('/login')} className="hidden sm:flex font-black text-xs uppercase tracking-widest text-slate-400 hover:text-white transition-colors px-4 py-2">Sign In</button>
-                    <button onClick={() => navigate('/register')} className="bg-[#10b981] text-black hover:bg-[#34d399] font-black text-xs uppercase tracking-widest py-3 px-8 rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:-translate-y-0.5 transition-all">Create Account</button>
+                    <button onClick={() => navigate('/login')} className="bg-[#10b981] text-black hover:bg-[#34d399] font-black text-xs uppercase tracking-widest py-3 px-8 rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:-translate-y-0.5 transition-all">Sign In</button>
                 </div>
             </header>
 
@@ -565,8 +529,8 @@ const LandingPage = ({ onLogin }) => {
                             The definitive platform for real-time asset intelligence. Experience zero-latency tracking with absolute precision, designed for modern command centers.
                         </p>
                         <div className="flex flex-col sm:flex-row items-center gap-5 justify-center lg:justify-start">
-                            <button onClick={() => setShowDemoModal(true)} className="w-full sm:w-auto bg-[#10b981] hover:bg-[#34d399] text-black font-black py-4 px-10 rounded-2xl shadow-[0_20px_40px_rgba(16,185,129,0.2)] hover:-translate-y-1 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-3">
-                                Demo for 1 hr <ArrowRight size={20} />
+                            <button onClick={() => navigate('/login')} className="w-full sm:w-auto bg-[#10b981] hover:bg-[#34d399] text-black font-black py-4 px-10 rounded-2xl shadow-[0_20px_40px_rgba(16,185,129,0.2)] hover:-translate-y-1 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-3">
+                                Platform Access <ArrowRight size={20} />
                             </button>
                             <button onClick={() => window.location.href = '#features'} className="w-full sm:w-auto bg-white/5 hover:bg-white/10 text-white font-black py-4 px-10 rounded-2xl border border-white/10 shadow-lg transition-all text-sm uppercase tracking-widest">
                                 Take a Tour
@@ -574,8 +538,8 @@ const LandingPage = ({ onLogin }) => {
                         </div>
                         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 sm:gap-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                             <span className="flex items-center gap-2"><CheckCircle2 className="text-[#10b981]" size={16} /> Direct Login</span>
-                            <span className="flex items-center gap-2"><CheckCircle2 className="text-[#10b981]" size={16} /> Dummy Data & Alerts</span>
-                            <span className="flex items-center gap-2"><CheckCircle2 className="text-[#10b981]" size={16} /> Setup Geofencing</span>
+                            <span className="flex items-center gap-2"><CheckCircle2 className="text-[#10b981]" size={16} /> Admin Managed</span>
+                            <span className="flex items-center gap-2"><CheckCircle2 className="text-[#10b981]" size={16} /> Total Security</span>
                         </div>
                     </motion.div>
 
@@ -585,23 +549,32 @@ const LandingPage = ({ onLogin }) => {
                         className="lg:w-1/2 relative perspective-1000 w-full"
                     >
                         <div className="relative rounded-[40px] overflow-hidden border border-white/10 shadow-[0_50px_100px_rgba(0,0,0,0.9)] bg-[#050505] group p-2 hover:border-[#10b981]/20 transition-all duration-700">
-                            {/* Ambient glow top-right */}
+                            {/* Ambient glow patches */}
                             <div className="absolute -top-20 -right-20 w-60 h-60 bg-[#10b981]/10 rounded-full blur-[60px] pointer-events-none" />
                             <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/10 rounded-full blur-[50px] pointer-events-none" />
+
                             <div className="bg-[#0a0a0a] rounded-[32px] overflow-hidden border border-white/5 relative aspect-[4/3]">
                                 {/* Browser Header Bar */}
-                                <div className="h-10 border-b border-white/5 flex items-center px-6 gap-3 bg-[#030303]">
+                                <div className="h-10 border-b border-white/5 flex items-center px-6 gap-3 bg-[#030303] relative z-20">
                                     <div className="w-3 h-3 rounded-full bg-rose-500/80"></div>
                                     <div className="w-3 h-3 rounded-full bg-amber-500/80"></div>
                                     <div className="w-3 h-3 rounded-full bg-[#10b981]/80"></div>
                                     <div className="flex-1 mx-4 h-5 bg-white/[0.03] rounded-md border border-white/5" />
                                     <div className="w-2 h-2 rounded-full bg-[#10b981] shadow-[0_0_6px_#10b981] animate-pulse" />
-                                    <span className="text-[8px] font-black text-[#10b981] uppercase tracking-widest">Live</span>
+                                    <span className="text-[8px] font-black text-[#10b981] uppercase tracking-widest">Live Spectrum View</span>
                                 </div>
-                                {/* Mockup Content */}
+
+                                {/* Mockup Content Area */}
                                 <div className="absolute inset-0 top-10 flex">
-                                    {/* Sidebar Mock */}
-                                    <div className="w-[22%] h-full border-r border-white/5 flex flex-col bg-[#040404]">
+                                    {/* Generated Premium Image */}
+                                    <img
+                                        src="/futuristic_gps_dashboard_hero_1773154679806.png"
+                                        alt="Futuristic Dashboard"
+                                        className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity duration-1000"
+                                    />
+
+                                    {/* Sidebar Mock Overlay */}
+                                    <div className="w-[22%] h-full border-r border-white/5 flex flex-col bg-[#040404]/80 backdrop-blur-md relative z-10">
                                         <div className="p-3 border-b border-white/5">
                                             <div className="h-6 bg-white/5 rounded-lg w-3/4 mb-2" />
                                             <div className="h-4 bg-white/[0.03] rounded w-full" />
@@ -618,12 +591,69 @@ const LandingPage = ({ onLogin }) => {
                                             </div>
                                         ))}
                                     </div>
-                                    {/* Main Area Map Mock */}
-                                    <div className="flex-1 relative overflow-hidden bg-[#0c1220]">
-                                        {/* Atmospheric grid */}
-                                        <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
-                                        {/* Radial glow center */}
-                                        <div className="absolute inset-0 bg-gradient-radial from-[#10b981]/5 via-transparent to-transparent" style={{ background: 'radial-gradient(ellipse at 60% 50%, rgba(16,185,129,0.08) 0%, transparent 60%)' }} />
+
+                                    {/* Map & Alerts Overlay */}
+                                    <div className="flex-1 relative overflow-hidden pointer-events-none">
+                                        {/* Dynamic Status Badges */}
+                                        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
+                                            <div className="bg-black/85 backdrop-blur border border-[#10b981]/30 px-3 py-2 rounded-xl flex items-center gap-2 shadow-lg">
+                                                <div className="w-6 h-6 rounded-full bg-[#10b981]/20 flex items-center justify-center shrink-0">
+                                                    <Car size={10} className="text-[#10b981]" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[9px] font-black text-white leading-none">Truck Alpha</div>
+                                                    <div className="text-[7px] font-black text-[#10b981] uppercase tracking-widest mt-0.5">● Moving • 65 km/h</div>
+                                                </div>
+                                            </div>
+                                            <div className="bg-black/85 backdrop-blur border border-blue-500/30 px-3 py-2 rounded-xl flex items-center gap-2 shadow-lg">
+                                                <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                                                    <Car size={10} className="text-blue-400" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[9px] font-black text-white leading-none">Van Beta</div>
+                                                    <div className="text-[7px] font-black text-blue-400 uppercase tracking-widest mt-0.5">● Moving • 42 km/h</div>
+                                                </div>
+                                            </div>
+                                            <div className="bg-black/85 backdrop-blur border border-amber-500/30 px-3 py-2 rounded-xl flex items-center gap-2 shadow-lg">
+                                                <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+                                                    <Car size={10} className="text-amber-400" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-[9px] font-black text-white leading-none">Car Gamma</div>
+                                                    <div className="text-[7px] font-black text-amber-400 uppercase tracking-widest mt-0.5">◎ Idle • 0 km/h</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Floating Alert Mockup */}
+                                        <div className="absolute bottom-3 right-3 z-20">
+                                            <motion.div
+                                                animate={{ opacity: [0, 1, 1, 0], y: [14, 0, 0, -14] }}
+                                                transition={{ duration: 8, repeat: Infinity, times: [0, 0.08, 0.92, 1], repeatDelay: 2 }}
+                                                className="bg-black/95 backdrop-blur border border-rose-500/60 p-3 rounded-xl w-44 shadow-2xl"
+                                            >
+                                                <div className="flex items-center gap-2 mb-1.5 text-rose-400">
+                                                    <AlertTriangle size={10} className="animate-pulse" />
+                                                    <span className="text-[7px] font-black uppercase tracking-widest font-mono">CRITICAL BREACH</span>
+                                                </div>
+                                                <div className="text-[10px] font-bold text-white mb-0.5">Geofence Violation</div>
+                                                <div className="text-[8px] text-slate-400 font-medium">Car Gamma exited Zone Alpha</div>
+                                            </motion.div>
+                                        </div>
+
+                                        {/* Top stat bar */}
+                                        <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
+                                            <div className="bg-black/70 backdrop-blur border border-white/10 px-2 py-1.5 rounded-lg text-center">
+                                                <div className="text-[8px] font-black text-slate-500 uppercase">Vehicles</div>
+                                                <div className="text-[13px] font-black text-[#10b981]">3</div>
+                                            </div>
+                                            <div className="bg-black/70 backdrop-blur border border-white/10 px-2 py-1.5 rounded-lg text-center">
+                                                <div className="text-[8px] font-black text-slate-500 uppercase">Alerts</div>
+                                                <div className="text-[13px] font-black text-rose-500">1</div>
+                                            </div>
+                                        </div>
+
+                                        {/* SVG Map Elements */}
                                         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 300" preserveAspectRatio="none">
                                             {/* Route path trails */}
                                             <path d="M50,250 Q150,150 250,190 T380,50" fill="none" stroke="#10b981" strokeWidth="1.5" opacity="0.25" strokeDasharray="6 4" />
@@ -701,65 +731,6 @@ const LandingPage = ({ onLogin }) => {
                                                 </g>
                                             </g>
                                         </svg>
-
-                                        {/* Vehicle Status Cards */}
-                                        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
-                                            <div className="bg-black/85 backdrop-blur border border-[#10b981]/30 px-3 py-2 rounded-xl flex items-center gap-2 shadow-lg">
-                                                <div className="w-6 h-6 rounded-full bg-[#10b981]/20 flex items-center justify-center shrink-0">
-                                                    <Car size={10} className="text-[#10b981]" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-[9px] font-black text-white leading-none">Truck Alpha</div>
-                                                    <div className="text-[7px] font-black text-[#10b981] uppercase tracking-widest mt-0.5">● Moving • 65 km/h</div>
-                                                </div>
-                                            </div>
-                                            <div className="bg-black/85 backdrop-blur border border-blue-500/30 px-3 py-2 rounded-xl flex items-center gap-2 shadow-lg">
-                                                <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
-                                                    <Car size={10} className="text-blue-400" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-[9px] font-black text-white leading-none">Van Beta</div>
-                                                    <div className="text-[7px] font-black text-blue-400 uppercase tracking-widest mt-0.5">● Moving • 42 km/h</div>
-                                                </div>
-                                            </div>
-                                            <div className="bg-black/85 backdrop-blur border border-amber-500/30 px-3 py-2 rounded-xl flex items-center gap-2 shadow-lg">
-                                                <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
-                                                    <Car size={10} className="text-amber-400" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-[9px] font-black text-white leading-none">Car Gamma</div>
-                                                    <div className="text-[7px] font-black text-amber-400 uppercase tracking-widest mt-0.5">◎ Idle • 0 km/h</div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Alert notification */}
-                                        <div className="absolute bottom-3 right-3 z-20">
-                                            <motion.div
-                                                animate={{ opacity: [0, 1, 1, 0], y: [14, 0, 0, -14] }}
-                                                transition={{ duration: 8, repeat: Infinity, times: [0, 0.08, 0.92, 1], repeatDelay: 2 }}
-                                                className="bg-black/90 backdrop-blur border border-rose-500/60 p-3 rounded-xl w-44 shadow-[0_8px_24px_rgba(239,68,68,0.25)]"
-                                            >
-                                                <div className="flex items-center gap-2 mb-1.5 text-rose-400">
-                                                    <AlertTriangle size={10} className="animate-pulse shrink-0" />
-                                                    <span className="text-[7px] font-black uppercase tracking-widest">Geofence Alert</span>
-                                                </div>
-                                                <div className="text-[10px] font-bold text-white mb-0.5">Zone Breach</div>
-                                                <div className="text-[8px] text-slate-400 font-medium">Car Gamma exited ZONE ALPHA</div>
-                                            </motion.div>
-                                        </div>
-
-                                        {/* Top stat bar */}
-                                        <div className="absolute top-3 right-3 z-10 flex flex-col gap-1.5">
-                                            <div className="bg-black/70 backdrop-blur border border-white/10 px-2 py-1.5 rounded-lg text-center">
-                                                <div className="text-[8px] font-black text-slate-500 uppercase">Vehicles</div>
-                                                <div className="text-[13px] font-black text-[#10b981]">3</div>
-                                            </div>
-                                            <div className="bg-black/70 backdrop-blur border border-white/10 px-2 py-1.5 rounded-lg text-center">
-                                                <div className="text-[8px] font-black text-slate-500 uppercase">Alerts</div>
-                                                <div className="text-[13px] font-black text-rose-500">1</div>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -832,7 +803,7 @@ const LandingPage = ({ onLogin }) => {
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[#10b981]/10 rounded-full blur-[150px] pointer-events-none -z-10" />
                     <motion.div initial={{ scale: 0.9, opacity: 0 }} whileInView={{ scale: 1, opacity: 1 }} viewport={{ once: true }}>
                         <h2 className="text-5xl md:text-7xl font-black text-white tracking-tighter mb-8 leading-[0.9]">Ready To Take<br />Control?</h2>
-                        <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-12 font-medium">Join us to manage your vehicles and assets with absolute precision using GeoSurePath.</p>
+                        <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-12 font-medium">Join thousands of clients worldwide using {CONFIG.PORTAL_NAME} for professional fleet intelligence and high-resolution asset tracking.</p>
                         <button onClick={() => navigate('/register')} className="bg-[#10b981] hover:bg-[#34d399] text-black font-black text-lg uppercase tracking-widest py-6 px-16 rounded-[32px] shadow-[0_30px_60px_rgba(16,185,129,0.3)] hover:-translate-y-2 transition-all">
                             Create Account
                         </button>
@@ -846,7 +817,7 @@ const LandingPage = ({ onLogin }) => {
                             <div className="bg-[#10b981] p-2 rounded-xl">
                                 <MapIcon className="text-black" size={20} />
                             </div>
-                            <span className="font-black text-xl tracking-tighter text-white">GEOSURE<span className="text-[#10b981]">PATH</span></span>
+                            <span className="font-black text-xl tracking-tighter text-white">{CONFIG.PORTAL_NAME.split(/(?=[A-Z])/)[0]}<span className="text-[#10b981]">{CONFIG.PORTAL_NAME.split(/(?=[A-Z])/).slice(1).join('').toUpperCase()}</span></span>
                         </div>
                         <div className="text-slate-600 font-bold text-xs uppercase tracking-widest">
                             &copy; {new Date().getFullYear()} CORE INFRASTRUCTURE. All rights reserved.
@@ -859,42 +830,7 @@ const LandingPage = ({ onLogin }) => {
                     </div>
                 </footer>
             </main>
-
-            {/* --- DEMO LEAD MODAL --- */}
-            <AnimatePresence>
-                {showDemoModal && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-                        <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-[#050505] p-8 md:p-12 rounded-[32px] border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.8)] max-w-md w-full relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#10b981] to-blue-500" />
-                            <h3 className="text-3xl font-black text-white mb-2 tracking-tighter">Access Demo</h3>
-                            <p className="text-slate-400 font-medium mb-8 text-sm">Please provide your email or mobile number to enter the live demo simulation environment.</p>
-
-                            <form onSubmit={handleDemoStart} className="space-y-6">
-                                {demoError && <div className="text-rose-500 text-xs font-bold bg-rose-500/10 p-3 rounded-xl border border-rose-500/20">{demoError}</div>}
-
-                                <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-1">Identifier</label>
-                                    <input
-                                        type="text"
-                                        value={demoContact}
-                                        onChange={(e) => setDemoContact(e.target.value)}
-                                        placeholder="Mobile Number or Email"
-                                        className="w-full px-5 py-4 rounded-2xl bg-black border border-white/5 focus:border-[#10b981]/50 outline-none text-white font-medium transition-all"
-                                        required
-                                    />
-                                </div>
-                                <div className="flex gap-4 pt-4">
-                                    <button type="button" onClick={() => setShowDemoModal(false)} className="px-6 py-4 rounded-2xl text-slate-400 font-bold hover:text-white transition-colors bg-white/5 hover:bg-white/10 border border-white/5">Cancel</button>
-                                    <button type="submit" disabled={isDemoLoading} className="flex-1 bg-[#10b981] text-black font-black py-4 rounded-2xl shadow-[0_10px_20px_rgba(16,185,129,0.2)] hover:-translate-y-1 transition-all disabled:opacity-50">
-                                        {isDemoLoading ? 'Authorizing...' : 'Launch Simulation'}
-                                    </button>
-                                </div>
-                            </form>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
+        </div >
     );
 };
 
@@ -1092,9 +1028,6 @@ const LoginPage = ({ onLogin }) => {
                                     <button type="button" onClick={() => { setIsForgotMode(true); setError(''); }} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-[#10b981] transition-colors">
                                         Forgot Password?
                                     </button>
-                                    <button type="button" onClick={() => navigate('/register')} className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-white transition-colors">
-                                        Create an Account?
-                                    </button>
                                     <button type="button" onClick={(e) => handleLogin(e, 'ADMIN')} className="px-6 py-2 bg-rose-500/10 text-rose-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all">
                                         Force Admin Login
                                     </button>
@@ -1148,208 +1081,7 @@ const LoginPage = ({ onLogin }) => {
     );
 };
 
-const RegistrationPage = () => {
-    const navigate = useNavigate();
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [mobile, setMobile] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [vehicles, setVehicles] = useState([{ imei: '', name: '', plate: '' }]);
-    const [error, setError] = useState('');
-    const [otpSent, setOtpSent] = useState(false);
-    const [otpInput, setOtpInput] = useState('');
-    const [isVerified, setIsVerified] = useState(false);
-    const [otpError, setOtpError] = useState('');
 
-    const handleSendOtp = () => {
-        if (!/^[0-9]{10}$/.test(mobile)) {
-            setOtpError('Enter a valid 10-digit mobile number first.');
-            return;
-        }
-        setOtpError('');
-        setOtpSent(true);
-        // Mock OTP is 1234
-    };
-
-    const handleVerifyOtp = () => {
-        if (otpInput === '1234') {
-            setIsVerified(true);
-            setOtpError('');
-            setOtpSent(false);
-        } else {
-            setOtpError('Invalid OTP. Use 1234 for testing.');
-        }
-    };
-
-
-    const handleRegister = async (e) => {
-        e.preventDefault();
-        setError('');
-
-        if (!isVerified) {
-            setError('Please verify your mobile number via OTP before registering.');
-            return;
-        }
-
-        const plateRegex = /^[A-Z]{2}[ -]?[0-9]{1,2}[ -]?[A-Z]{1,2}[ -]?[0-9]{4}$/i;
-        if (vehicles.some(v => !plateRegex.test(v.plate))) {
-            setError('Invalid Indian Vehicle Plate format (e.g. MH 12 AB 1234).');
-            return;
-        }
-
-        if (vehicles.some(v => v.imei.length !== 15 || !/^[0-9]{15}$/.test(v.imei))) {
-            setError('All Hardware UUIDs (IMEI) must be exactly 15 digits.');
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            const req = await fetch(`${API_BASE}/api/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, email, password, mobile, vehicles })
-            });
-            const data = await req.json();
-
-            if (data.status === 'SUCCESS') {
-                // Success - redirect to login with welcome state
-                alert('Welcome to GeoSurePath! Your registration is complete. Please log in to access your dashboard.');
-                navigate('/login', { state: { registered: true, name } });
-            } else {
-                // Real error from backend
-                setError(data.message || 'Specific Registration Failure: Resource Conflict or Invalid Data.');
-            }
-        } catch (err) {
-            setError('Network Synchronization Error. Please check your connection.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <div className="min-h-screen flex bg-black font-sans selection:bg-[#10b981] selection:text-black overflow-hidden relative">
-            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#10b981]/5 rounded-full blur-[120px] pointer-events-none" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#0ea5e9]/5 rounded-full blur-[100px] pointer-events-none" />
-
-            <div className="hidden lg:flex lg:w-2/5 relative flex-col justify-between p-16 overflow-hidden border-r border-white/5">
-                <div className="relative z-10 flex items-center gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-                    <div className="w-12 h-12 rounded-2xl overflow-hidden shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform bg-black/30 border border-[#10b981]/30 flex items-center justify-center">
-                        <MapIcon className="text-[#10b981]" size={24} />
-                    </div>
-                    <span className="font-black text-2xl text-white tracking-tighter uppercase italic">GEOSURE<span className="text-[#10b981]">PATH</span></span>
-                </div>
-
-                <div className="relative z-10">
-                    <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 1 }}>
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#10b981]/10 border border-[#10b981]/20 text-[#10b981] text-[10px] font-black uppercase tracking-[0.2em] mb-8">
-                            <Zap size={12} className="fill-current" /> Register Account
-                        </div>
-                        <h1 className="text-7xl font-black text-white leading-[0.9] tracking-tighter mb-8 italic">
-                            Create <br />
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10b981] to-[#34d399]">Account.</span>
-                        </h1>
-                        <p className="text-slate-500 text-lg max-w-md mb-12 leading-relaxed font-black uppercase tracking-tight">
-                            Sign up to track your vehicles and manage your assets in real-time.
-                        </p>
-                    </motion.div>
-                </div>
-
-                <div className="relative z-10 flex items-center gap-6 text-slate-600 text-[10px] font-black uppercase tracking-widest">
-                    <span>&copy; {new Date().getFullYear()} CORE OS</span>
-                    <button className="hover:text-[#10b981] transition-colors">Infrastructure</button>
-                    <button className="hover:text-[#10b981] transition-colors">Security</button>
-                </div>
-            </div>
-
-            <div className="w-full lg:w-3/5 flex items-center justify-center p-8 relative overflow-y-auto custom-scrollbar">
-                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-3xl">
-                    <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-[40px] p-10 md:p-14 shadow-2xl relative overflow-hidden group hover:border-[#10b981]/30 transition-colors">
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-[#10b981]/5 rounded-full blur-[80px] group-hover:bg-[#10b981]/10 transition-colors" />
-
-                        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center mb-10 pb-6 border-b border-white/10 gap-6">
-                            <div>
-                                <h2 className="text-3xl font-black text-white italic tracking-tighter">Create Account</h2>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Enter your details to register</p>
-                            </div>
-                            <button onClick={() => navigate('/login')} className="px-6 py-3 bg-white/5 text-white border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all hover:bg-white/10 hover:border-white/20 active:scale-95">
-                                Login Instead
-                            </button>
-                        </div>
-
-                        {error && (
-                            <div className="mb-8 p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl flex items-center gap-4 text-rose-500 animate-in slide-in-from-top-2">
-                                <AlertCircle size={20} />
-                                <span className="text-xs font-black uppercase tracking-widest">{error}</span>
-                            </div>
-                        )}
-
-                        <form onSubmit={handleRegister} className="space-y-10 relative z-10">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-6">
-                                    <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em] border-l-2 border-[#10b981] pl-3">Account Details</h3>
-                                    <div className="space-y-5">
-                                        {[
-                                            { l: 'Full Name', v: name, s: setName, i: UserCircle, t: 'text', p: 'e.g. John Doe' },
-                                            { l: 'Email Address', v: email, s: setEmail, i: MapIcon, t: 'email', p: 'e.g. user@domain.com' },
-                                            { l: 'Mobile Number', v: mobile, s: setMobile, i: Smartphone, t: 'tel', p: '10-Digit Mobile Number', isMobile: true },
-                                            { l: 'Password', v: password, s: setPassword, i: Shield, t: 'password', p: 'Strong Password' }
-                                        ].map((f, i) => (
-                                            <div key={i} className="group">
-                                                <div className="flex justify-between items-center mb-2 pl-1">
-                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] group-focus-within:text-[#10b981] transition-colors">{f.l}</label>
-                                                    {f.isMobile && isVerified && <span className="text-[#10b981] text-[9px] font-black uppercase tracking-widest flex items-center gap-1"><CheckCircle2 size={10} /> Verified</span>}
-                                                </div>
-                                                <div className="relative">
-                                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-500 group-focus-within:text-[#10b981] transition-colors"><f.i size={16} /></div>
-                                                    <input required={!f.isMobile || !isVerified} type={f.t} value={f.v} onChange={e => f.s(e.target.value)} disabled={f.isMobile && isVerified} placeholder={f.p} className="w-full pl-12 pr-5 py-4 bg-black/50 border border-white/10 focus:border-[#10b981]/50 rounded-xl outline-none transition-all text-sm font-bold text-white placeholder-slate-600 focus:bg-black/80 shadow-inner disabled:opacity-50" />
-                                                    {f.isMobile && !isVerified && !otpSent && (
-                                                        <button type="button" onClick={handleSendOtp} className="absolute right-2 top-2 bottom-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all">Send OTP</button>
-                                                    )}
-                                                </div>
-                                                {f.isMobile && otpSent && (
-                                                    <div className="mt-3 flex gap-2 animate-in fade-in slide-in-from-top-2">
-                                                        <input type="text" maxLength={4} value={otpInput} onChange={e => setOtpInput(e.target.value)} placeholder="Enter 1234" className="w-full px-4 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 focus:border-blue-500 rounded-xl outline-none text-center text-sm font-black tracking-[0.5em]" />
-                                                        <button type="button" onClick={handleVerifyOtp} className="bg-blue-500 text-white px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all">Verify</button>
-                                                    </div>
-                                                )}
-                                                {f.isMobile && otpError && <div className="mt-2 text-rose-500 text-[9px] font-black uppercase tracking-widest"><AlertTriangle size={10} className="inline mr-1" />{otpError}</div>}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="space-y-6">
-                                    <div className="flex justify-between items-center">
-                                        <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em] border-l-2 border-[#10b981] pl-3">GPS Devices</h3>
-                                        <button type="button" onClick={() => setVehicles([...vehicles, { imei: '', name: '', plate: '' }])} className="w-8 h-8 flex items-center justify-center bg-white/5 border border-white/10 rounded-lg text-white hover:bg-[#10b981]/20 hover:text-[#10b981] hover:border-[#10b981]/30 transition-colors shadow-sm">
-                                            <Plus size={14} />
-                                        </button>
-                                    </div>
-                                    <div className="space-y-4 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {vehicles.map((v, i) => (
-                                            <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 relative group">
-                                                <input required maxLength={15} value={v.imei} onChange={e => { const n = [...vehicles]; n[i].imei = e.target.value; setVehicles(n); }} placeholder="15 Digit IMEI" className="w-full px-5 py-3 rounded-xl border border-slate-200 mb-3 text-xs font-black" />
-                                                <div className="flex gap-3">
-                                                    <input required value={v.name} onChange={e => { const n = [...vehicles]; n[i].name = e.target.value; setVehicles(n); }} placeholder="Asset Name" className="w-1/2 px-5 py-3 rounded-xl border border-slate-200 text-xs font-black" />
-                                                    <input required value={v.plate} onChange={e => { const n = [...vehicles]; n[i].plate = e.target.value; setVehicles(n); }} placeholder="Plate ID" className="w-1/2 px-5 py-3 rounded-xl border border-slate-200 text-xs font-black" />
-                                                </div>
-                                                {vehicles.length > 1 && <button type="button" onClick={() => setVehicles(vehicles.filter((_, idx) => idx !== i))} className="absolute -top-2 -right-2 bg-rose-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><X size={12} /></button>}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="pt-10 flex flex-col items-center">
-                                {error && <div className="mb-6 p-4 bg-rose-50 rounded-2xl text-rose-500 text-[10px] font-black uppercase tracking-widest flex items-center gap-3"><AlertTriangle size={14} /> {error}</div>}
-                                <button type="submit" disabled={isLoading} className="w-full max-w-md bg-[#10b981] text-black font-black py-6 rounded-3xl shadow-2xl hover:-translate-y-1 active:scale-95 transition-all text-sm uppercase tracking-[0.3em] flex justify-center items-center gap-4">Register Account <ArrowRight size={20} /></button>
-                            </div>
-                        </form>
-                    </div>
-                </motion.div>
-            </div>
-        </div>
-    );
-};
 const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
     const [points, setPoints] = useState([]);
 
@@ -1400,9 +1132,14 @@ const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
     );
 };
 const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setTheme, user, pendingCommands, setPendingCommands, addToast }) => {
-    const [selectedVehicle, setSelectedVehicle] = useState(null);
+    const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+    const selectedVehicle = fleet.find(v => v.id === selectedVehicleId) || null;
+    const [isFollowMode, setIsFollowMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('Objects');
+    const [reportsData, setReportsData] = useState([]);
+    const [isReportsLoading, setIsReportsLoading] = useState(false);
+    const [reportType, setReportType] = useState('trips'); // 'trips', 'stops', 'summary'
     const [geofences, setGeofences] = useState([]);
     const [alertRules, setAlertRules] = useState([]);
     const [notificationProfile, setNotificationProfile] = useState({ email: '', phone: '', is_email_active: true, is_sms_active: false });
@@ -1442,8 +1179,18 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
             const alertWithDetails = { ...alert, vehicleName: v ? v.name : `Device ${alert.imei.slice(-6)}` };
             setCurrentAlert(alertWithDetails);
             setAlertHistory(prev => [alertWithDetails, ...prev].slice(0, 50));
-            try { new Audio('/beep.txt').play().catch(() => { }); } catch (e) { }
+            // try {new Audio('/alert.mp3').play().catch(() => { }); } catch (e) { }
             setTimeout(() => setCurrentAlert(null), 6000);
+        });
+
+        socket.on('COMMAND_UPDATE', (update) => {
+            addToast({
+                type: 'GEOFENCE_ENTER',
+                vehicleName: update.vehicleName || `Device ${update.vehicleId}`,
+                severity: update.status === 'DELIVERED' ? 'success' : update.status === 'FAILED' ? 'critical' : 'info',
+                message: `Command ${update.action}: ${update.status}`,
+                timestamp: new Date()
+            });
         });
 
         return () => socket.disconnect();
@@ -1490,7 +1237,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
         } catch (e) { console.warn("Profile fetch failed", e); }
     };
 
-    const saveGeofence = () => {
+    const saveGeofence = async () => {
         if (!geofenceName.trim()) return;
 
         let formattedCoords;
@@ -1514,19 +1261,31 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
             coordinates: formattedCoords
         };
 
-        // Sync to backend
-        fetch(`${API_BASE}/api/geofences`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                user_id: user.id, // Align with schema
-                name: geofenceName,
-                fence_type: drawnData.type,
-                coordinates: formattedCoords
-            })
-        }).catch(err => console.error("Geofence sync failed", err));
-
-        setGeofences(prev => [...prev, newGeofence]);
+        // Sync to Traccar via backend proxy
+        try {
+            const res = await fetch(`${API_BASE}/api/geofences`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: geofenceName,
+                    fence_type: drawnData.type,
+                    coordinates: formattedCoords
+                })
+            });
+            const data = await res.json();
+            if (data.status === 'SUCCESS' && selectedVehicle) {
+                // Link geofence to the current vehicle/device in Traccar
+                await fetch(`${API_BASE}/api/permissions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deviceId: selectedVehicle.id,
+                        geofenceId: data.geofence.id
+                    })
+                });
+                setGeofences(prev => [...prev, { ...data.geofence, coordinates: formattedCoords }]);
+            }
+        } catch (err) { console.error("Geofence sync failed", err); }
         setDrawMode(null);
         setDrawnData(null);
         setGeofenceName('');
@@ -1633,9 +1392,12 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
     }, [selectedVehicle?.lat, selectedVehicle?.lng, selectedVehicle?.id]);
 
     const handleVehicleSelect = (v) => {
-        if (selectedVehicle?.id !== v.id) setRouteHistory([]);
-        setSelectedVehicle(v);
-        if (v.lat && v.lng) setMapPanTo([Number(v.lat), Number(v.lng)]);
+        if (selectedVehicleId !== v.id) setRouteHistory([]);
+        setSelectedVehicleId(v.id);
+        if (v.lat && v.lng) {
+            setMapPanTo([Number(v.lat), Number(v.lng)]);
+            setIsFollowMode(true); // Auto-enable follow on select
+        }
     };
 
     const handleExecuteCommand = async (e) => {
@@ -1645,56 +1407,74 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
             return;
         }
 
-        if (user?.isDemo) {
-            setCommandLoading(true);
-            setTimeout(() => {
-                setShowPinModal(false);
-                setPinCode('');
-                const commandToRun = selectedVehicle.ignition ? 'CUT_ENGINE' : 'RESTORE_ENGINE';
-                alert(`SIMULATION SUCCESS: Command ${commandToRun} Dispatched.`);
-                setSelectedVehicle(prev => ({ ...prev, ignition: !prev.ignition }));
-                setFleet(prev => prev.map(fv => fv.id === selectedVehicle.id ? { ...fv, ignition: !fv.ignition } : fv));
-                setCommandLoading(false);
-            }, 1000);
-            return;
-        }
-
         setCommandLoading(true);
         setPinError('');
         try {
-            const commandToRun = selectedVehicle.ignition ? 'CUT_ENGINE' : 'RESTORE_ENGINE';
-            const req = await fetch(`${API_BASE}/api/commands/send`, {
+            const action = selectedVehicle.live_ignition ? 'IGNITION_OFF' : 'IGNITION_ON';
+            const res = await fetch(`${API_BASE}/api/commands/send-ignition`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ deviceId: selectedVehicle.id, commandType: commandToRun })
+                body: JSON.stringify({
+                    vehicleId: selectedVehicle.id,
+                    action,
+                    userId: user.id
+                })
             });
-            const data = await req.json();
+            const data = await res.json();
+
             if (data.status === 'SUCCESS') {
                 setShowPinModal(false);
                 setPinCode('');
-                // Add to globally tracked pending commands
-                setPendingCommands(prev => ({
-                    ...prev,
-                    [selectedVehicle.id]: { type: commandToRun, timestamp: Date.now() }
-                }));
                 addToast({
                     type: 'GEOFENCE_ENTER',
-                    vehicleName: selectedVehicle.name,
+                    vehicleName: selectedVehicle.vehicle_number || selectedVehicle.name,
                     severity: 'info',
-                    message: `Command "${commandToRun}" Dispatched. Waiting for device confirmation...`,
-                    timestamp: new Date(),
-                    imei: selectedVehicle.id
+                    message: data.message,
+                    timestamp: new Date()
                 });
-                // Temporarily update local state for immediate feedback
-                setSelectedVehicle(prev => ({ ...prev, ignition: !prev.ignition }));
             } else {
-                setPinError(data.message || 'Dispatch Failed.');
+                setPinError(data.message || 'Transmission Failed');
             }
         } catch (err) {
-            setPinError('Network Error.');
+            setPinError('System unreachable. Check backend connectivity.');
         } finally {
             setCommandLoading(false);
         }
+    };
+
+    const [commandHistory, setCommandHistory] = useState([]);
+    const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+    const fetchCommandHistory = async (vId) => {
+        try {
+            const res = await fetch(`${API_BASE}/api/commands/history/${vId}`);
+            const data = await res.json();
+            if (data.status === 'SUCCESS') {
+                setCommandHistory(data.history);
+                setShowHistoryModal(true);
+            }
+        } catch (e) {
+            console.error("Command history fetch error", e);
+        }
+    };
+
+    const [contextMenu, setContextMenu] = useState(null); // { x, y, lat, lng }
+
+    const MapEvents = () => {
+        useMapEvents({
+            contextmenu: (e) => {
+                setContextMenu({
+                    x: e.containerPoint.x,
+                    y: e.containerPoint.y,
+                    lat: e.latlng.lat,
+                    lng: e.latlng.lng
+                });
+            },
+            click: () => {
+                if (contextMenu) setContextMenu(null);
+            }
+        });
+        return null;
     };
 
     const filteredFleet = fleet.filter(v =>
@@ -1704,68 +1484,98 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
     return (
         <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden font-sans text-slate-800 dark:text-slate-200 bg-[#e4e5e6] dark:bg-slate-950 relative">
-            {/* Left Side Panel - GEOSUREPATH LIGHT THEME */}
+            {/* TRACCAR-STYLE SIDEBAR */}
             <aside className="w-[340px] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 z-[100] shadow-md">
-                {/* Search Bar */}
-                <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                    <div className="flex gap-2">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                            <input
-                                type="text"
-                                placeholder="Search"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-400 shadow-sm text-slate-800 dark:text-white"
-                            />
+                {/* Modernized Search & Control Cluster */}
+                <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Shield className="text-blue-500" size={18} />
+                            <span className="text-xs font-black uppercase tracking-[0.2em]">Live Pulse</span>
                         </div>
                         <button
                             onClick={() => setShowNotificationModal(true)}
-                            className="p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md text-slate-500 hover:text-blue-600 transition-colors shadow-sm"
-                            title="Notification Center"
+                            className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-blue-500 transition-all shadow-sm"
                         >
-                            <SlidersHorizontal size={18} />
+                            <SlidersHorizontal size={14} />
                         </button>
+                    </div>
+
+                    <div className="relative group">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-500" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Search Assets, IMEI, Plates..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl py-3 pl-10 pr-4 text-xs font-bold outline-none ring-offset-2 focus:ring-2 focus:ring-blue-500/20 transition-all text-slate-700 dark:text-white"
+                        />
                     </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                    {['Objects', 'Events', 'Geofences'].map(tab => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={`flex-1 text-center font-medium text-sm pb-1 relative transition-colors ${activeTab === tab ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-                        >
-                            {tab}
-                            {activeTab === tab && <div className="absolute -bottom-[13px] left-0 right-0 h-[2px] bg-blue-600" />}
-                        </button>
-                    ))}
+                {/* Premium Navigation Tabs */}
+                <div className="flex px-4 pt-4 gap-2 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto no-scrollbar">
+                    {['Objects', 'Events', 'Geofences', 'Maint.', 'Reports'].map(tab => {
+                        const iconMap = { 'Objects': <Car size={14} />, 'Events': <Bell size={14} />, 'Geofences': <MapIcon size={14} />, 'Maint.': <Activity size={14} />, 'Reports': <BarChart3 size={14} /> };
+                        const displayTab = tab === 'Maint.' ? 'Maintenance' : tab;
+                        const isActive = activeTab === displayTab;
+                        return (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(displayTab)}
+                                className={`flex-1 flex flex-col items-center gap-1.5 pb-2 transition-all relative min-w-[64px] ${isActive ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-t-xl'}`}
+                            >
+                                <div className={`p-2 rounded-xl transition-colors ${isActive ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : ''}`}>
+                                    {iconMap[tab]}
+                                </div>
+                                <span className="text-[9px] font-black uppercase tracking-tighter">{tab}</span>
+                                {isActive && (
+                                    <motion.div layoutId="sidebarTabUnderline" className="absolute -bottom-[1px] left-2 right-2 h-[3px] bg-blue-600 rounded-full" />
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
 
-                {/* Vehicle List */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-slate-800/30 p-2">
-                    {activeTab === 'Objects' && filteredFleet.map((v) => (
-                        <div
-                            key={v.id}
-                            onClick={() => handleVehicleSelect(v)}
-                            className={`flex items-center gap-3 p-3 mb-2 rounded bg-white dark:bg-slate-900 shadow-sm border border-slate-100 dark:border-slate-800 cursor-pointer transition-all hover:border-blue-200 dark:hover:border-blue-500/50 ${selectedVehicle?.id === v.id ? 'border-l-4 border-l-blue-500 shadow-md dark:shadow-blue-900/20' : ''}`}
-                        >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${v.status === 'moving' ? 'bg-green-100 text-green-600' : v.status === 'idle' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
-                                <span className="text-sm">{VEHICLE_ICON_OPTIONS.find(opt => opt.id === (v.iconType || getVehicleIconPref(v.id)))?.emoji || '🚗'}</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-sm text-slate-700 dark:text-white truncate">{v.name}</div>
-                                <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
-                                    <span>{v.lastUpdate ? new Date(v.lastUpdate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Offline'}</span>
-                                    {v.status === 'moving' && <span className="text-green-600 font-medium">{v.speed} km/h</span>}
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-50/50 dark:bg-slate-950/20 p-3 space-y-2">
+                    {/* Objects List - Traccar Premium Style */}
+                    {activeTab === 'Objects' && (
+                        <>
+                            {filteredFleet.map((v) => (
+                                <motion.div
+                                    whileHover={{ scale: 1.01, x: 2 }}
+                                    key={v.id}
+                                    onClick={() => handleVehicleSelect(v)}
+                                    className={`p-4 rounded-[28px] border transition-all cursor-pointer group relative overflow-hidden ${selectedVehicle?.id === v.id ? 'bg-white dark:bg-slate-900 border-blue-500 shadow-xl ring-1 ring-blue-500/20' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 shadow-sm hover:border-blue-200'}`}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner transition-colors ${v.status === 'moving' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600' : v.status === 'idle' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-500' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                                            {VEHICLE_ICON_OPTIONS.find(opt => opt.id === (v.iconType || getVehicleIconPref(v.id)))?.emoji || '🚗'}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[13px] font-black text-slate-900 dark:text-white truncate leading-tight group-hover:text-blue-600 transition-colors">{v.name}</div>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${v.status === 'moving' ? 'bg-emerald-500 animate-pulse' : v.status === 'idle' ? 'bg-amber-500' : 'bg-slate-300'}`} />
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                                                    {v.status || 'Offline'} • {v.lastUpdate ? new Date(v.lastUpdate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-sm font-black text-blue-600 italic leading-none">{v.speed} <span className="text-[8px] not-italic opacity-50">KM/H</span></div>
+                                            <div className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">{v.id.slice(-6)}</div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ))}
+                            {filteredFleet.length === 0 && (
+                                <div className="text-center py-20 opacity-20">
+                                    <Car size={48} className="mx-auto mb-4" />
+                                    <div className="text-xs font-black uppercase tracking-widest">No matching assets</div>
                                 </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                <div className={`w-2 h-2 rounded-full ${v.status === 'moving' ? 'bg-green-500' : v.status === 'idle' ? 'bg-amber-500' : 'bg-slate-400'}`}></div>
-                            </div>
-                        </div>
-                    ))}
+                            )}
+                        </>
+                    )}
                     {activeTab === 'Objects' && filteredFleet.length === 0 && (
                         <div className="text-center py-10 text-slate-400 text-sm">
                             <Search className="mx-auto mb-2 opacity-50" size={24} />
@@ -1773,6 +1583,74 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                         </div>
                     )}
 
+                    {/* Reports Tab */}
+                    {activeTab === 'Reports' && (
+                        <div className="p-4 flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-800/20">
+                            <div className="flex gap-1 mb-4 p-1 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                                {['trips', 'stops', 'summary'].map(type => (
+                                    <button
+                                        key={type}
+                                        onClick={() => setReportType(type)}
+                                        className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${reportType === type ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                                    >
+                                        {type}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={async () => {
+                                    if (!selectedVehicle) { alert('Please select a vehicle first.'); return; }
+                                    setIsReportsLoading(true);
+                                    try {
+                                        const res = await fetch(`${API_BASE}/api/reports/${reportType}?deviceId=${selectedVehicle.id}&from=${historyRange.from}&to=${historyRange.to}`);
+                                        const data = await res.json();
+                                        setReportsData(Array.isArray(data) ? data : []);
+                                    } catch (err) { alert('Failed to generate report.'); }
+                                    finally { setIsReportsLoading(false); }
+                                }}
+                                className="w-full bg-[#39569c] text-white py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-lg mb-4 flex items-center justify-center gap-2 hover:bg-blue-700 transition-all"
+                            >
+                                {isReportsLoading ? <RefreshCcw size={14} className="animate-spin" /> : <BarChart3 size={14} />}
+                                {isReportsLoading ? 'Generating...' : `Generate ${reportType} Report`}
+                            </button>
+
+                            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
+                                {reportsData.length === 0 && !isReportsLoading && (
+                                    <div className="text-center py-10 text-slate-400 flex flex-col items-center gap-2 opacity-50">
+                                        <History size={32} />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">No report data generated</span>
+                                    </div>
+                                )}
+                                {reportsData.map((item, idx) => (
+                                    <div key={idx} className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm space-y-2">
+                                        <div className="flex justify-between items-start">
+                                            <div className="text-[9px] font-black text-blue-600 uppercase italic">
+                                                {reportType === 'trips' ? 'Route Segment' : reportType === 'stops' ? 'Dwell Point' : 'Fleet Summary'}
+                                            </div>
+                                            <div className="text-[8px] font-black text-slate-400 uppercase">{new Date(item.startTime || item.lastUpdate).toLocaleDateString()}</div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <div className="text-[8px] font-black text-slate-400 uppercase">Distance</div>
+                                                <div className="text-sm font-black text-slate-700 dark:text-white">{(item.distance / 1000).toFixed(2)} km</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-[8px] font-black text-slate-400 uppercase">Speed Avg</div>
+                                                <div className="text-sm font-black text-blue-600">{(item.averageSpeed * 1.852).toFixed(1)} km/h</div>
+                                            </div>
+                                        </div>
+                                        {(reportType === 'stops' || reportType === 'trips') && (
+                                            <div className="pt-2 border-t border-slate-50 dark:border-slate-800">
+                                                <div className="text-[8px] font-black text-slate-400 uppercase">Duration</div>
+                                                <div className="text-xs font-bold text-slate-600">{(item.duration / 3600000).toFixed(1)} hours</div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     {/* Events tab content */}
                     {activeTab === 'Events' && (
                         <div className="p-4 h-full overflow-y-auto custom-scrollbar">
@@ -1838,34 +1716,40 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
                             {geofenceSubTab === 'Zones' ? (
                                 <>
-                                    <div className="grid grid-cols-4 gap-2 mb-4 shrink-0">
+                                    <div className="grid grid-cols-2 gap-3 mb-6 shrink-0">
                                         <button
                                             onClick={() => setDrawMode(drawMode === 'circle' ? null : 'circle')}
-                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'circle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                            className={`p-4 rounded-3xl border-2 transition-all group flex flex-col items-center gap-2 ${drawMode === 'circle' ? 'bg-blue-600 border-blue-600 shadow-xl scale-105 text-white' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500'}`}
                                         >
-                                            <div className="w-5 h-5 rounded-full border-2 border-current border-dashed"></div>
-                                            Circle
-                                        </button>
-                                        <button
-                                            onClick={() => setDrawMode(drawMode === 'rectangle' ? null : 'rectangle')}
-                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'rectangle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                                        >
-                                            <div className="w-6 h-5 border-2 border-current border-dashed"></div>
-                                            Rect
-                                        </button>
-                                        <button
-                                            onClick={() => setDrawMode(drawMode === 'polygon' ? null : 'polygon')}
-                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'polygon' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                                        >
-                                            <Hexagon size={16} className="text-current" />
-                                            Poly
+                                            <div className={`p-2.5 rounded-xl transition-colors ${drawMode === 'circle' ? 'bg-white/10 text-white' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600'}`}>
+                                                <CircleIcon size={20} />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Circular</span>
                                         </button>
                                         <button
                                             onClick={() => setDrawMode(drawMode === 'route' ? null : 'route')}
-                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'route' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-400 text-amber-700 dark:text-amber-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                            className={`p-4 rounded-3xl border-2 transition-all group flex flex-col items-center gap-2 ${drawMode === 'route' ? 'bg-amber-500 border-amber-500 shadow-xl scale-105 text-white' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500'}`}
                                         >
-                                            <RouteIcon size={16} className="text-current" />
-                                            Route
+                                            <div className={`p-2.5 rounded-xl transition-colors ${drawMode === 'route' ? 'bg-white/10 text-white' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-500'}`}>
+                                                <RouteIcon size={20} />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Path Fence</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setDrawMode(drawMode === 'polygon' ? null : 'polygon')}
+                                            className={`p-4 rounded-3xl border-2 transition-all group flex flex-col items-center gap-2 ${drawMode === 'polygon' ? 'bg-indigo-600 border-indigo-600 shadow-xl scale-105 text-white' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500'}`}
+                                        >
+                                            <div className={`p-2.5 rounded-xl transition-colors ${drawMode === 'polygon' ? 'bg-white/10 text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600'}`}>
+                                                <Hexagon size={20} />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Complex</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setDrawMode(null)}
+                                            className="p-4 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center gap-2 text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-all"
+                                        >
+                                            <X size={20} />
+                                            <span className="text-[10px] font-black uppercase tracking-widest">Reset</span>
                                         </button>
                                     </div>
 
@@ -1905,34 +1789,45 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                 </div>
                             )}
 
-                            <div className="flex-1 overflow-y-auto min-h-0 space-y-2 pb-20">
+                            <div className="flex-1 overflow-y-auto min-h-0 space-y-3 pb-20 custom-scrollbar">
                                 {geofences.length === 0 ? (
-                                    <div className="text-center py-8">
-                                        <MapPin className="mx-auto mb-3 text-slate-300" size={32} />
-                                        <div className="text-sm font-semibold text-slate-500">No Geofences Configured</div>
-                                        <div className="text-xs text-slate-400 mt-1">Select a shape above to start drawing.</div>
+                                    <div className="text-center py-20 opacity-20 flex flex-col items-center gap-4">
+                                        <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-400 flex items-center justify-center"><Hexagon size={24} /></div>
+                                        <div className="text-[10px] font-black uppercase tracking-[0.2em]">Zero Active Boundaries</div>
                                     </div>
                                 ) : (
                                     geofences.map(gf => (
-                                        <div key={gf.id} className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 rounded bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 dark:text-blue-400"><Hexagon size={16} /></div>
-                                                <div>
-                                                    <div className="font-bold text-sm text-slate-700 dark:text-white">{gf.name}</div>
-                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">{gf.fence_type}</div>
+                                        <motion.div
+                                            whileHover={{ scale: 1.02, x: 2 }}
+                                            key={gf.id}
+                                            className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] shadow-sm flex items-center justify-between group transition-all hover:border-blue-200 dark:hover:border-slate-700"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform ${gf.fence_type === 'ROUTE' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-500' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600'}`}>
+                                                    {gf.fence_type === 'ROUTE' ? <RouteIcon size={16} /> : <Hexagon size={16} />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="text-[12px] font-black text-slate-800 dark:text-white leading-tight truncate">{gf.name}</div>
+                                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mt-1">{gf.fence_type} • SECURE</div>
                                                 </div>
                                             </div>
                                             <button
                                                 onClick={() => setGeofences(prev => prev.filter(g => g.id !== gf.id))}
-                                                className="text-slate-400 hover:text-red-500 p-1"
-                                                title="Delete Geofence"
+                                                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all opacity-0 group-hover:opacity-100"
                                             >
-                                                <X size={16} />
+                                                <X size={14} />
                                             </button>
-                                        </div>
+                                        </motion.div>
                                     ))
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Maintenance tab content */}
+                    {activeTab === 'Maintenance' && (
+                        <div className="flex-1 h-full overflow-hidden">
+                            <Maintenance fleet={fleet} />
                         </div>
                     )}
                 </div>
@@ -1940,6 +1835,87 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
             {/* Right Side Map */}
             <main className="flex-1 relative">
+                {/* FLOATING ASSET HUD - PREMIUM OVERLAY */}
+                <AnimatePresence>
+                    {selectedVehicle && !historyMode && (
+                        <motion.div
+                            initial={{ x: 400, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: 400, opacity: 0 }}
+                            className="absolute top-6 right-6 z-[1000] w-[380px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-white/20 dark:border-slate-800 rounded-[40px] shadow-2xl p-6 overflow-hidden group"
+                        >
+                            {/* Decorative background element */}
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-blue-500/10 transition-colors" />
+
+                            <div className="relative flex items-start justify-between mb-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-14 h-14 rounded-2xl bg-white dark:bg-slate-800 shadow-xl flex items-center justify-center text-3xl">
+                                        {VEHICLE_ICON_OPTIONS.find(o => o.id === (selectedVehicle.iconType || 'car'))?.emoji || '🚗'}
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest leading-none mb-1">Live Asset</div>
+                                        <h2 className="text-xl font-black text-slate-900 dark:text-white leading-tight">{selectedVehicle.name}</h2>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedVehicleId(null)}
+                                    className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-50 dark:bg-slate-800 text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div className="bg-slate-900/5 dark:bg-white/5 p-4 rounded-3xl border border-white/20">
+                                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1.5"><Gauge size={10} /> Velocity</div>
+                                    <div className="text-2xl font-black text-slate-900 dark:text-white italic">{selectedVehicle.speed} <span className="text-[10px] not-italic opacity-40">KM/H</span></div>
+                                </div>
+                                <div className="bg-slate-900/5 dark:bg-white/5 p-4 rounded-3xl border border-white/20">
+                                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1.5"><MapIcon size={10} /> Heading</div>
+                                    <div className="text-2xl font-black text-slate-900 dark:text-white italic">{selectedVehicle.heading || 0}° <span className="text-[10px] not-italic opacity-40">DEG</span></div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedVehicle.ignition ? 'bg-emerald-50 text-emerald-500' : 'bg-slate-50 text-slate-400'}`}>
+                                            <Zap size={18} fill={selectedVehicle.ignition ? 'currentColor' : 'none'} />
+                                        </div>
+                                        <div>
+                                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Ignition Status</div>
+                                            <div className={`text-xs font-black uppercase ${selectedVehicle.ignition ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                                {selectedVehicle.ignition ? 'Engine Running' : 'Engine Halted'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowPinModal(true)}
+                                        className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedVehicle.ignition ? 'bg-rose-500 text-white shadow-lg' : 'bg-emerald-500 text-black shadow-lg'}`}
+                                    >
+                                        {selectedVehicle.ignition ? 'Stop Engine' : 'Restore Engine'}
+                                    </button>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleFetchHistory}
+                                        className="flex-1 py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl"
+                                    >
+                                        History Playback
+                                    </button>
+                                    <button
+                                        onClick={() => setMapPanTo([selectedVehicle.lat, selectedVehicle.lng])}
+                                        className="w-14 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-3xl flex items-center justify-center text-slate-400 hover:text-blue-500 shadow-sm"
+                                    >
+                                        <Target size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <MapContainer
                     center={[21.1458, 79.0882]}
                     zoom={selectedVehicle ? 14 : 8}
@@ -1955,37 +1931,163 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                         }
                         attribution='&copy; OpenStreetMap &copy; CARTO'
                     />
+                    <MapEvents />
+
+                    {contextMenu && (
+                        <div
+                            className="absolute z-[2000] bg-white dark:bg-slate-900 shadow-2xl rounded-2xl border border-slate-200 dark:border-slate-800 p-2 min-w-[200px] backdrop-blur-xl pointer-events-auto"
+                            style={{ top: contextMenu.y, left: contextMenu.x }}
+                        >
+                            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">Direct Map Control</div>
+                            <button
+                                onClick={() => { setDrawnData({ type: 'CIRCLE', center: { lat: contextMenu.lat, lng: contextMenu.lng }, radius: 200 }); setShowGeofenceModal(true); setContextMenu(null); }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-600 hover:text-white rounded-xl transition-all text-[11px] font-black uppercase tracking-tighter"
+                            >
+                                <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center text-blue-600 group-hover:text-white"><Hexagon size={14} /></div>
+                                Create 200m Zone
+                            </button>
+                            <button
+                                onClick={() => { setDrawnData({ type: 'CIRCLE', center: { lat: contextMenu.lat, lng: contextMenu.lng }, radius: 500 }); setShowGeofenceModal(true); setContextMenu(null); }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-600 hover:text-white rounded-xl transition-all text-[11px] font-black uppercase tracking-tighter"
+                            >
+                                <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/60 flex items-center justify-center text-blue-600 group-hover:text-white"><CircleIcon size={14} /></div>
+                                Create 500m Zone
+                            </button>
+                            <div className="h-[1px] bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
+                            <button
+                                onClick={() => { setContextMenu(null); setMapPanTo([contextMenu.lat, contextMenu.lng]); }}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all text-[11px] font-black uppercase tracking-tighter text-slate-500"
+                            >
+                                <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400"><MapPin size={14} /></div>
+                                Focus Here
+                            </button>
+                        </div>
+                    )}
                     <ZoomControl position="bottomright" />
                     {!historyMode && <MapAutoCenter fleet={fleet} />}
                     <MapController panTo={mapPanTo} />
 
                     {/* Clustered Vehicles */}
                     <MarkerClusterGroup chunkedLoading maxClusterRadius={40}>
-                        {fleet.filter(v => v.lat !== undefined && v.lng !== undefined).map((v) => (
-                            <Marker
-                                key={v.id}
-                                position={[Number(v.lat), Number(v.lng)]}
-                                icon={getVehicleIcon({
-                                    ...v,
-                                    isAlerting: currentAlert?.imei === v.id
-                                })}
-                                eventHandlers={{
-                                    click: () => handleVehicleSelect(v),
-                                }}
+                        <LayerGroup>
+                            {fleet.filter(v => v.lat !== undefined && v.lng !== undefined).map((v) => (
+                                <Marker
+                                    key={v.id}
+                                    position={[Number(v.lat), Number(v.lng)]}
+                                    icon={getVehicleIcon({
+                                        ...v,
+                                        isAlerting: currentAlert?.imei === v.imei
+                                    }, v.color || getVehicleColorPref(v.id))}
+                                    eventHandlers={{ click: () => handleVehicleSelect(v) }}
+                                >
+                                    <Popup className="traccar-premium-popup">
+                                        <div className="p-4 min-w-[240px] font-sans">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <div className="text-[10px] font-black uppercase text-blue-600 tracking-widest leading-none mb-1">Vehicle Status</div>
+                                                    <h3 className="text-sm font-black text-slate-900 leading-tight">{v.vehicle_number}</h3>
+                                                </div>
+                                                <div className={`px-2 py-1 rounded-md text-[9px] font-black uppercase ${v.status === 'moving' ? 'bg-emerald-100 text-emerald-600' :
+                                                    v.status === 'idle' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'
+                                                    }`}>
+                                                    {v.status}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2 mb-5">
+                                                <div className="flex justify-between items-center text-[11px]">
+                                                    <span className="text-slate-400 font-bold uppercase tracking-tight">Driver</span>
+                                                    <span className="text-slate-700 font-black">{v.driver_name || 'Unassigned'}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-[11px]">
+                                                    <span className="text-slate-400 font-bold uppercase tracking-tight">Speed</span>
+                                                    <span className="text-blue-600 font-black">{v.speed} KM/H</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-2 mb-2">
+                                                <button
+                                                    onClick={() => { setPinCode(''); setPinError(''); setShowPinModal(true); }}
+                                                    className={`py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest text-white shadow-lg transition-all ${v.live_ignition ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-200' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-200'
+                                                        }`}
+                                                >
+                                                    {v.live_ignition ? 'Ignition OFF' : 'Restore Ignition'}
+                                                </button>
+                                                <button
+                                                    onClick={() => handleVehicleSelect(v)}
+                                                    className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+                                                >
+                                                    Vehicle Info
+                                                </button>
+                                            </div>
+                                            <button
+                                                onClick={() => fetchCommandHistory(v.id)}
+                                                className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-slate-800 transition-all mb-1"
+                                            >
+                                                <History size={12} /> Command History
+                                            </button>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            ))}
+                        </LayerGroup>
+
+                        {/* LIVE BREADCRUMBS (TRAIL) */}
+                        {selectedVehicle && routeHistory.length > 1 && !historyMode && (
+                            <Polyline
+                                positions={routeHistory}
+                                pathOptions={{ color: selectedVehicle.color || '#10b981', weight: 3, opacity: 0.6, dashArray: '5, 10' }}
                             />
-                        ))}
+                        )}
+
+                        {isFollowMode && selectedVehicle && <MapController panTo={[Number(selectedVehicle.lat), Number(selectedVehicle.lng)]} />}
                     </MarkerClusterGroup>
 
                     {/* Active Geofences Visualization - Always Visible */}
                     {geofences.map(gf => {
+                        const commonProps = {
+                            key: gf.id,
+                            pathOptions: { color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 },
+                        };
+                        const popup = (
+                            <Popup>
+                                <div className="p-3 min-w-[150px]">
+                                    <div className="text-[10px] font-black uppercase text-blue-600 tracking-widest mb-1">{gf.fence_type}</div>
+                                    <div className="text-sm font-black text-slate-800">{gf.name}</div>
+                                    <button
+                                        onClick={() => setGeofences(prev => prev.filter(g => g.id !== gf.id))}
+                                        className="mt-3 w-full bg-red-50 hover:bg-red-100 text-red-600 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-tighter flex items-center justify-center gap-1.5 transition-all"
+                                    >
+                                        <X size={12} /> Remove Zone
+                                    </button>
+                                </div>
+                            </Popup>
+                        );
+
                         if (gf.fence_type === 'CIRCLE') {
-                            return <Circle key={gf.id} center={[gf.coordinates[0], gf.coordinates[1]]} radius={gf.coordinates[2]} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 }} />;
+                            return (
+                                <Circle {...commonProps} center={[gf.coordinates[0], gf.coordinates[1]]} radius={gf.coordinates[2]}>
+                                    {popup}
+                                </Circle>
+                            );
                         } else if (gf.fence_type === 'rectangle' || (gf.fence_type === 'POLYGON' && gf.coordinates.length === 2)) {
-                            return <Rectangle key={gf.id} bounds={gf.coordinates} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 }} />;
+                            return (
+                                <Rectangle {...commonProps} bounds={gf.coordinates}>
+                                    {popup}
+                                </Rectangle>
+                            );
                         } else if (gf.fence_type === 'polygon' || (gf.fence_type === 'POLYGON' && gf.coordinates.length > 2)) {
-                            return <Polygon key={gf.id} positions={gf.coordinates} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.2, weight: 2 }} />;
+                            return (
+                                <Polygon {...commonProps} positions={gf.coordinates}>
+                                    {popup}
+                                </Polygon>
+                            );
                         } else if (gf.fence_type === 'ROUTE') {
-                            return <Polyline key={gf.id} positions={gf.coordinates} pathOptions={{ color: '#f59e0b', weight: 40, opacity: 0.3 }} />;
+                            return (
+                                <Polyline {...commonProps} positions={gf.coordinates} pathOptions={{ color: '#f59e0b', weight: 40, opacity: 0.3 }}>
+                                    {popup}
+                                </Polyline>
+                            );
                         }
                         return null;
                     })}
@@ -2106,7 +2208,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                     )}
                 </AnimatePresence>
 
-                {/* Floating Info Panel - GEOSUREPATH THEME */}
+                {/* Floating Info Panel - DYNAMIC THEME */}
                 {selectedVehicle && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -2154,34 +2256,28 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                                 {Number(selectedVehicle.lat).toFixed(5)}, {Number(selectedVehicle.lng).toFixed(5)}
                                             </td>
                                         </tr>
-                                        <tr className="border-b border-slate-100">
-                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Smartphone size={14} /> Mobile</td>
-                                            <td className="p-2 text-xs font-semibold text-slate-700">{selectedVehicle.phone || 'N/A'}</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Hash size={14} /> IMEI</td>
-                                            <td className="p-2 text-xs font-mono text-slate-500">{selectedVehicle.id}</td>
-                                        </tr>
-                                        {selectedVehicle.fuel !== undefined && (
-                                            <tr className="border-t border-slate-100 dark:border-slate-800">
-                                                <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">⛽ Fuel</td>
-                                                <td className="p-2 text-xs font-semibold text-emerald-600">{selectedVehicle.fuel}{selectedVehicle.fuel <= 100 ? '%' : ' L'}</td>
-                                            </tr>
-                                        )}
-                                        {selectedVehicle.battery !== undefined && (
-                                            <tr className="border-t border-slate-100 dark:border-slate-800">
-                                                <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">🔋 Battery</td>
-                                                <td className="p-2 text-xs font-semibold text-amber-600">{selectedVehicle.battery}V</td>
-                                            </tr>
-                                        )}
-                                        {selectedVehicle.temp !== undefined && (
-                                            <tr className="border-t border-slate-100 dark:border-slate-800">
-                                                <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">🌡️ Temp</td>
-                                                <td className="p-2 text-xs font-semibold text-blue-600">{selectedVehicle.temp}°C</td>
-                                            </tr>
-                                        )}
                                     </tbody>
                                 </table>
+
+                                <div className="p-3 space-y-1 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+                                    {[
+                                        { label: 'Odometer', value: selectedVehicle.attributes?.totalDistance ? `${(selectedVehicle.attributes.totalDistance / 1000).toFixed(2)} km` : '0.00 km', icon: '📏' },
+                                        { label: 'Engine Hours', value: selectedVehicle.attributes?.hours ? `${(selectedVehicle.attributes.hours / 3600000).toFixed(1)} h` : '0.0 h', icon: '⏱️' },
+                                        { label: 'Fuel level', value: selectedVehicle.fuel !== undefined ? `${selectedVehicle.fuel}${selectedVehicle.fuel <= 100 ? '%' : ' L'}` : 'N/A', icon: '⛽', color: 'text-emerald-500' },
+                                        { label: 'Battery', value: selectedVehicle.battery !== undefined ? `${selectedVehicle.battery}V` : 'N/A', icon: '🔋', color: 'text-amber-500' },
+                                        { label: 'Temperature', value: selectedVehicle.temp !== undefined ? `${selectedVehicle.temp}°C` : 'N/A', icon: '🌡️', color: 'text-blue-500' },
+                                        { label: 'Contact Phone', value: selectedVehicle.phone || 'N/A', icon: '📱' },
+                                        { label: 'Unique ID', value: selectedVehicle.id, icon: '🆔' }
+                                    ].map((attr, idx) => (
+                                        <div key={idx} className="flex justify-between items-center p-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all rounded-2xl group border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-sm grayscale group-hover:grayscale-0 transition-opacity opacity-70 group-hover:opacity-100">{attr.icon}</span>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{attr.label}</span>
+                                            </div>
+                                            <div className={`text-xs font-black ${attr.color || 'text-slate-700 dark:text-white'}`}>{attr.value}</div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="bg-slate-50 dark:bg-slate-800 p-2 border-t border-slate-200 dark:border-slate-700 flex gap-2">
@@ -2290,6 +2386,18 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                         <MapPin size={12} />
                         {mapTile === 'satellite' ? '🛣️ Street' : '🛰️ Satellite'}
                     </button>
+                    {selectedVehicle && (
+                        <button
+                            onClick={() => setIsFollowMode(!isFollowMode)}
+                            className={`backdrop-blur-sm border px-3 py-1.5 rounded-md text-[10px] font-bold shadow-sm transition-all flex items-center gap-1.5 ${isFollowMode
+                                ? 'bg-blue-600 text-white border-blue-500'
+                                : 'bg-white/90 dark:bg-slate-900/90 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-white dark:hover:bg-slate-800'
+                                }`}
+                        >
+                            <Shield size={12} className={isFollowMode ? 'animate-pulse' : ''} />
+                            {isFollowMode ? 'Lock On' : 'Follow Mode'}
+                        </button>
+                    )}
                 </div>
 
                 {/* History Date Range + Player Bar */}
@@ -2432,18 +2540,25 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                         <button
                                             type="submit"
                                             disabled={commandLoading || pinCode.length < 4}
-                                            className={`flex-1 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider text-white transition-all disabled:opacity-50 ${selectedVehicle?.ignition
+                                            className={`flex-1 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider text-white transition-all disabled:opacity-50 ${selectedVehicle?.live_ignition
                                                 ? 'bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200'
                                                 : 'bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200'
                                                 }`}
                                         >
-                                            {commandLoading ? '⏳ Sending...' : (selectedVehicle?.ignition ? '✂️ Cut Engine' : '✅ Restore Engine')}
+                                            {commandLoading ? '⏳ Sending...' : (selectedVehicle?.live_ignition ? '✂️ Cut Ignition' : '✅ Restore Ignition')}
                                         </button>
                                     </div>
                                 </form>
                             </motion.div>
                         </motion.div>
                     )}
+
+                    <CommandHistoryModal
+                        isOpen={showHistoryModal}
+                        onClose={() => setShowHistoryModal(false)}
+                        history={commandHistory}
+                        vehicleName={selectedVehicle?.vehicle_number}
+                    />
 
                     {/* Notification Center Modal */}
                     {showNotificationModal && (
@@ -2550,9 +2665,135 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                             </motion.div>
                         </motion.div>
                     )}
+
+                    {/* Geofence Save Modal */}
+                    {showGeofenceModal && (
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[1000] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4"
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+                                className="bg-white dark:bg-slate-900 rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden border border-white/20"
+                            >
+                                <div className="p-8 bg-blue-600 text-white relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16" />
+                                    <h3 className="text-2xl font-black italic tracking-tighter uppercase flex items-center gap-3 relative z-10">
+                                        <Hexagon size={24} /> Seal Boundary
+                                    </h3>
+                                    <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mt-2 relative z-10">Define protection zone parameters</p>
+                                </div>
+                                <div className="p-8 space-y-6">
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5 ml-1">Identity Name</label>
+                                        <input
+                                            type="text"
+                                            value={geofenceName}
+                                            onChange={e => setGeofenceName(e.target.value)}
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl px-6 py-4 text-sm font-black outline-none focus:border-blue-500 transition-all"
+                                            placeholder="e.g. ALPHA_ZONE_1"
+                                        />
+                                    </div>
+
+                                    <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-3xl border border-slate-100 dark:border-slate-700">
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Geometry Intel</div>
+                                        <div className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                                            Type: <span className="text-blue-500 font-black">{drawnData?.type}</span>
+                                        </div>
+                                        {drawnData?.type === 'CIRCLE' && (
+                                            <div className="text-[10px] text-slate-500 mt-1">Radius: {Math.round(drawnData.radius)} meters</div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex gap-3 pt-2">
+                                        <button
+                                            onClick={() => { setShowGeofenceModal(false); setDrawnData(null); }}
+                                            className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:text-rose-500 transition-all"
+                                        >
+                                            Discard
+                                        </button>
+                                        <button
+                                            onClick={saveGeofence}
+                                            className="flex-1 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-200 hover:scale-[1.02] active:scale-95 transition-all"
+                                        >
+                                            Authorize Zone
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
                 </AnimatePresence>
             </main>
         </div>
+    );
+};
+
+
+const CommandHistoryModal = ({ isOpen, onClose, history, vehicleName }) => {
+    if (!isOpen) return null;
+    return (
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[6000] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4"
+            >
+                <motion.div
+                    initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+                    className="bg-white dark:bg-slate-900 rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20"
+                >
+                    <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
+                        <div>
+                            <h3 className="text-2xl font-black italic tracking-tighter uppercase flex items-center gap-3">
+                                <History size={24} className="text-blue-500" /> Command Archive
+                            </h3>
+                            <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mt-1">Audit trail for {vehicleName}</p>
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={24} /></button>
+                    </div>
+                    <div className="p-8 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                        {history.length === 0 ? (
+                            <div className="text-center py-20 opacity-20">
+                                <FileText size={48} className="mx-auto mb-4" />
+                                <div className="text-xs font-black uppercase tracking-widest">No Commands Sent Yet</div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {history.map((h, i) => (
+                                    <div key={i} className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center gap-6">
+                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${h.action === 'IGNITION_OFF' ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'
+                                            }`}>
+                                            {h.action === 'IGNITION_OFF' ? '🔴' : '🟢'}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <div className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">{h.action}</div>
+                                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${h.status === 'DELIVERED' ? 'bg-emerald-100 text-emerald-600' :
+                                                    h.status === 'FAILED' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'
+                                                    }`}>
+                                                    {h.status}
+                                                </span>
+                                            </div>
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                By: {h.user_name || 'System Admin'} • {new Date(h.sent_at).toLocaleString()}
+                                            </div>
+                                            {h.response && (
+                                                <div className="mt-2 p-2 bg-black/5 dark:bg-white/5 rounded-lg text-[10px] font-mono text-slate-500 truncate">
+                                                    REP: {h.response}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div className="p-8 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                        <button onClick={onClose} className="px-8 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl text-[10px] font-black uppercase tracking-widest">Close Registry</button>
+                    </div>
+                </motion.div>
+            </motion.div>
+        </AnimatePresence>
     );
 };
 
@@ -2562,12 +2803,12 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
 export default function App() {
     const [user, setUser] = useState(() => {
-        const saved = localStorage.getItem('geosurepath_user');
+        const saved = localStorage.getItem('portal_user_session');
         return saved ? JSON.parse(saved) : null;
     });
 
     const [fleet, setFleet] = useState([]);
-    const [pendingCommands, setPendingCommands] = useState({}); // { imei: { type, timestamp } }
+    const [pendingCommands, setPendingCommands] = useState({}); // {imei: {type, timestamp} }
     const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
     const [mapTile, setMapTile] = useState(localStorage.getItem('mapTile') || 'street');
     useEffect(() => { localStorage.setItem('mapTile', mapTile); }, [mapTile]);
@@ -2589,12 +2830,12 @@ export default function App() {
 
     const handleLogin = (userData) => {
         setUser(userData);
-        localStorage.setItem('geosurepath_user', JSON.stringify(userData));
+        localStorage.setItem('portal_user_session', JSON.stringify(userData));
     };
 
     const handleLogout = () => {
         setUser(null);
-        localStorage.removeItem('geosurepath_user');
+        localStorage.removeItem('portal_user_session');
     };
 
 
@@ -2602,58 +2843,34 @@ export default function App() {
     useEffect(() => {
         const fetchFleet = async () => {
             try {
-                // Try Traccar first
-                const traccarRes = await fetch(`${TRACCAR_BASE}/api/positions`, {
-                    headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
-                });
+                const res = await fetch(`${API_BASE}/api/vehicles`);
+                const data = await res.json();
 
-                if (traccarRes.ok) {
-                    const positions = await traccarRes.json();
-                    const devicesRes = await fetch(`${TRACCAR_BASE}/api/devices`, {
-                        headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
-                    });
-                    const devices = await devicesRes.json();
-
-                    const traccarFleet = devices.map(dev => {
-                        const pos = positions.find(p => p.deviceId === dev.id) || {};
-                        const ignition = pos.attributes?.ignition || false;
-                        const speed = pos.speed ? Math.round(pos.speed * 1.852) : 0;
-                        let derivedStatus = 'offline';
-                        if (pos.id) {
-                            if (speed > 5 || pos.attributes?.motion) derivedStatus = 'moving';
-                            else if (ignition) derivedStatus = 'idle';
-                            else derivedStatus = 'stopped';
-                        }
-
-                        return {
-                            id: dev.uniqueId,
-                            name: dev.name,
-                            phone: dev.phone || dev.contact || 'N/A',
-                            type: dev.category || 'car',
-                            status: derivedStatus,
-                            speed: speed,
-                            heading: pos.course || 0,
-                            lat: typeof pos.latitude === 'number' ? pos.latitude : 21.0,
-                            lng: typeof pos.longitude === 'number' ? pos.longitude : 79.0,
-                            ignition: ignition,
-                            fuel: pos.attributes?.fuel,
-                            battery: pos.attributes?.battery || pos.attributes?.batteryLevel,
-                            temp: pos.attributes?.temp1 || pos.attributes?.temperature,
-                            lastUpdate: pos.deviceTime || Date.now(),
-                            iconType: getVehicleIconPref(dev.uniqueId),
-                            color: getVehicleColorPref(dev.uniqueId),
-                            commandPending: false // Placeholder for command feedback loop
-                        };
-                    });
-                    if (traccarFleet.length > 0) {
-                        setFleet(traccarFleet);
-                        return;
-                    }
+                if (data.status === 'SUCCESS') {
+                    const traccarFleet = data.vehicles.map(v => ({
+                        id: v.id,
+                        vehicle_number: v.vehicle_number,
+                        name: v.vehicle_number, // Fallback for components using .name
+                        driver_name: v.driver_name,
+                        imei: v.imei,
+                        protocol: v.protocol,
+                        model: v.device_model,
+                        sim_number: v.sim_number,
+                        status: v.speed > 5 ? 'moving' : (v.live_ignition ? 'idle' : 'stopped'),
+                        speed: Math.round(v.speed || 0),
+                        ignition: v.live_ignition,
+                        live_ignition: v.live_ignition,
+                        lat: v.latitude || 21.0,
+                        lng: v.longitude || 79.0,
+                        lastUpdate: v.last_update || Date.now(),
+                        type: 'car', // Default
+                        iconType: getVehicleIconPref(v.id),
+                        color: getVehicleColorPref(v.id)
+                    }));
+                    setFleet(traccarFleet);
                 }
-                // If Traccar returned no devices, keep fleet empty
-                setFleet([]);
             } catch (err) {
-                console.warn('Fleet fetch failed, using live data only');
+                console.warn('Fleet fetch failed:', err);
                 setFleet([]);
             }
         };
@@ -2860,7 +3077,7 @@ export default function App() {
 
                 {!user ? (
                     <Routes>
-                        <Route path="/" element={<RegistrationPage onLogin={handleLogin} />} />
+                        <Route path="/" element={<LandingPage />} />
                         <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
@@ -2871,12 +3088,12 @@ export default function App() {
 
                             {user.role === 'ADMIN' && (
                                 <>
-                                    <Route path="/admin" element={<Dashboard type="ADMIN" fleet={fleet} user={user} />} />
+                                    <Route path="/admin" element={<Dashboard type="ADMIN" fleet={fleet} user={user} onLogin={handleLogin} />} />
                                     <Route path="/command-center" element={<CommandCenter fleet={fleet} />} />
                                 </>
                             )}
 
-                            <Route path="/client" element={<Dashboard type="CLIENT" fleet={fleet} user={user} />} />
+                            <Route path="/client" element={<Dashboard type="CLIENT" fleet={fleet} user={user} onLogin={handleLogin} />} />
                             <Route path="/live" element={
                                 <SimpleTracker
                                     fleet={fleet}
@@ -2891,6 +3108,7 @@ export default function App() {
                                 />
                             } />
                             <Route path="/reports" element={<Reports fleet={fleet} />} />
+                            <Route path="/maintenance" element={<Maintenance fleet={fleet} />} />
                             <Route path="/settings" element={<Settings user={user} fleet={fleet} theme={theme} setTheme={setTheme} />} />
                             <Route path="*" element={<Navigate to={user.role === 'ADMIN' ? '/admin' : '/client'} replace />} />
                         </Routes>

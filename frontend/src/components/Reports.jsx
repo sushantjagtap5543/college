@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
     FileText, Calendar, Car, Download, ChevronDown, List, SlidersHorizontal, ArrowRight, Printer,
-    TrendingUp, Droplet, Gauge, Clock, MapPin, AlertCircle, Route as RouteIcon, Activity, Hexagon
+    TrendingUp, Droplet, Gauge, Clock, MapPin, AlertCircle, Route as RouteIcon, Activity, Hexagon, Wrench
 } from 'lucide-react';
 import {
     LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -152,11 +152,12 @@ export default function Reports({ fleet = [] }) {
 
     const reportTypes = [
         { id: 'summary', label: 'Daily Summary', icon: <Activity size={14} /> },
-        { id: 'trips', label: 'Trip Report', icon: <RouteIcon size={14} /> },
-        { id: 'fuel', label: 'Fuel Consumption', icon: <Droplet size={14} /> },
-        { id: 'speed', label: 'Overspeed', icon: <Gauge size={14} /> },
-        { id: 'idle', label: 'Idle / Stop', icon: <Clock size={14} /> },
-        { id: 'geofence', label: 'Geofence Logs', icon: <Hexagon size={14} /> },
+        { id: 'trips', label: 'Trip History', icon: <RouteIcon size={14} /> },
+        { id: 'stops', label: 'Stop Report', icon: <MapPin size={14} /> },
+        { id: 'maintenance', label: 'Maintenance Logs', icon: <Wrench size={14} /> },
+        { id: 'fuel', label: 'Fuel Analytics', icon: <Droplet size={14} /> },
+        { id: 'speed', label: 'Overspeed Logs', icon: <Gauge size={14} /> },
+        { id: 'geofence', label: 'Geofence Events', icon: <Hexagon size={14} /> },
         { id: 'alerts', label: 'System Alerts', icon: <AlertCircle size={14} /> }
     ];
 

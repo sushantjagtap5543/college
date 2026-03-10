@@ -63,7 +63,7 @@ export default function Settings({ user, fleet = [], theme, setTheme }) {
                 const res = await req.json();
                 if (res.status === 'SUCCESS') {
                     // Update local storage so it persists right away
-                    localStorage.setItem('geosurepath_user', JSON.stringify(res.user));
+                    localStorage.setItem('portal_user_session', JSON.stringify(res.user));
                     setSuccess(true);
                     setTimeout(() => { setSuccess(false); window.location.reload(); }, 1500);
                 } else {
@@ -182,8 +182,8 @@ export default function Settings({ user, fleet = [], theme, setTheme }) {
                                         <div
                                             key={tone.id}
                                             className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedToneId === tone.id
-                                                    ? 'border-blue-500 bg-blue-50 shadow-sm'
-                                                    : 'border-slate-100 bg-white hover:border-slate-300'
+                                                ? 'border-blue-500 bg-blue-50 shadow-sm'
+                                                : 'border-slate-100 bg-white hover:border-slate-300'
                                                 }`}
                                             onClick={() => setSelectedToneId(tone.id)}
                                         >

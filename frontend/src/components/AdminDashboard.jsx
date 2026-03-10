@@ -32,15 +32,59 @@ export default function AdminDashboard({
     smsForm, setSmsForm, isSmsSending, smsStatus, handleSmsDispatch,
     isAddingDevice, setIsAddingDevice, newDevice, setNewDevice, handleAddInventory,
     isAssigning, setIsAssigning, assignForm, setAssignForm, handleAssignDevice,
-    handleToggleBlock, handleRenew, handleUpdateClient, handleUpdateBilling, API_BASE
+    handleToggleBlock, handleRenew, handleUpdateClient, handleUpdateBilling, API_BASE, onLogin
 }) {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [health, setHealth] = useState(null);
     const [revenue, setRevenue] = useState(null);
     const [alertsLog, setAlertsLog] = useState([]);
+    const [unlinkedDevices, setUnlinkedDevices] = useState([]);
+    const [commandTemplates, setCommandTemplates] = useState([]);
+
+    const handleImpersonate = async (clientId) => {
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/clients/impersonate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: clientId })
+            });
+            const data = await res.json();
+            if (data.status === 'SUCCESS') {
+                onLogin(data.user);
+            } else {
+                alert(data.message || 'Failed to impersonate client.');
+            }
+        } catch (err) {
+            alert('System error during remote access.');
+        }
+    };
     const [alertFilter, setAlertFilter] = useState('');
     const [backupStatus, setBackupStatus] = useState(null);
     const [backupLoading, setBackupLoading] = useState(false);
+    const [isAddingClient, setIsAddingClient] = useState(false);
+    const [newClientForm, setNewClientForm] = useState({ name: '', email: '', password: '', phone: '' });
+
+    const handleAddClient = async (e) => {
+        e.preventDefault();
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/clients/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newClientForm)
+            });
+            const data = await res.json();
+            if (data.status === 'SUCCESS') {
+                alert('Account authorized successfully.');
+                setIsAddingClient(false);
+                setNewClientForm({ name: '', email: '', password: '', phone: '' });
+                fetchAdminData();
+            } else {
+                alert(data.message || 'Authorization failed.');
+            }
+        } catch (err) {
+            alert('System error during client authorization.');
+        }
+    };
     const [backupMsg, setBackupMsg] = useState('');
     const [revenueLoading, setRevenueLoading] = useState(false);
     const [allVehicles, setAllVehicles] = useState([]);
@@ -77,9 +121,39 @@ export default function AdminDashboard({
         if (activeTab === 'vehicles') fetchAllVehicles();
         if (activeTab === 'models' || activeTab === 'commands') {
             fetchModels();
-            if (activeTab === 'commands') fetchLogicalCmds();
+            if (activeTab === 'commands') fetchCommandTemplates();
         }
+        fetchUnlinkedDevices(); // Always check for newborns
     }, [activeTab]);
+
+    const fetchUnlinkedDevices = async () => {
+        try {
+            const d = await (await fetch(`${API_BASE}/api/admin/unlinked-devices`)).json();
+            if (d.status === 'SUCCESS') setUnlinkedDevices(d.unlinked);
+        } catch { }
+    };
+
+    const fetchCommandTemplates = async () => {
+        try {
+            const d = await (await fetch(`${API_BASE}/api/admin/command-templates`)).json();
+            if (d.status === 'SUCCESS') setCommandTemplates(d.templates);
+        } catch { }
+    };
+
+    const handleSaveTemplate = async (template) => {
+        try {
+            const res = await fetch(`${API_BASE}/api/admin/command-templates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(template)
+            });
+            const data = await res.json();
+            if (data.status === 'SUCCESS') {
+                alert('Command blueprint updated successfully.');
+                fetchCommandTemplates();
+            }
+        } catch { }
+    };
 
     useEffect(() => {
         if (selectedModelId) fetchMappings(selectedModelId);
@@ -335,6 +409,23 @@ export default function AdminDashboard({
                             ))}
                         </div>
 
+                        {unlinkedDevices.length > 0 && (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-rose-50 border border-rose-100 p-8 rounded-[40px] flex justify-between items-center shadow-sm">
+                                <div className="flex items-center gap-6">
+                                    <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center shadow-sm text-rose-500">
+                                        <Activity size={32} className="animate-pulse" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-black text-rose-900 uppercase tracking-widest">New Hardware Detected by Traccar</h4>
+                                        <p className="text-[11px] text-rose-600 font-bold uppercase mt-1 opacity-70 italic tracking-tight">{unlinkedDevices.length} NEW UUIDs detected on network. Please assign them to assets.</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setActiveTab('devices')} className="bg-rose-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:bg-rose-700 transition-all active:scale-95 leading-none">
+                                    Register Now
+                                </button>
+                            </motion.div>
+                        )}
+
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                             <div className="lg:col-span-2 bg-white rounded-[40px] shadow-sm border border-slate-200 p-3 overflow-hidden flex flex-col min-h-[500px]">
                                 <div className="p-6 flex justify-between items-center">
@@ -482,12 +573,43 @@ export default function AdminDashboard({
                                     <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em]">Master Ledger Access • {clients.length} Records</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsAssigning(!isAssigning)} className="bg-slate-900 text-white px-10 py-4 rounded-[24px] font-black text-[11px] uppercase tracking-widest flex items-center gap-4 transition-all hover:-translate-y-1 shadow-2xl active:scale-95">
-                                {isAssigning ? <X size={16} /> : <Plus size={16} />} Provision Asset
-                            </button>
+                            <div className="flex gap-4">
+                                <button onClick={() => setIsAddingClient(!isAddingClient)} className="bg-emerald-600 text-white px-10 py-4 rounded-[24px] font-black text-[11px] uppercase tracking-widest flex items-center gap-4 transition-all hover:-translate-y-1 shadow-2xl active:scale-95">
+                                    {isAddingClient ? <X size={16} /> : <Plus size={16} />} Authorize Client
+                                </button>
+                                <button onClick={() => setIsAssigning(!isAssigning)} className="bg-slate-900 text-white px-10 py-4 rounded-[24px] font-black text-[11px] uppercase tracking-widest flex items-center gap-4 transition-all hover:-translate-y-1 shadow-2xl active:scale-95">
+                                    {isAssigning ? <X size={16} /> : <Plus size={16} />} Provision Asset
+                                </button>
+                            </div>
                         </div>
 
                         <AnimatePresence>
+                            {isAddingClient && (
+                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mb-10 overflow-hidden">
+                                    <form onSubmit={handleAddClient} className="bg-emerald-50 p-10 rounded-[40px] border border-emerald-100 flex flex-wrap gap-8 items-end">
+                                        <div className="flex-1 min-w-[200px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Client Name</label>
+                                            <input required type="text" value={newClientForm.name} onChange={e => setNewClientForm({ ...newClientForm, name: e.target.value })} className="w-full bg-white px-6 py-4 rounded-[20px] border border-slate-200 text-sm font-black outline-none focus:border-emerald-500 shadow-sm" placeholder="John Doe" />
+                                        </div>
+                                        <div className="flex-1 min-w-[200px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Email Address</label>
+                                            <input required type="email" value={newClientForm.email} onChange={e => setNewClientForm({ ...newClientForm, email: e.target.value })} className="w-full bg-white px-6 py-4 rounded-[20px] border border-slate-200 text-sm font-black outline-none focus:border-emerald-500 shadow-sm" placeholder="client@example.com" />
+                                        </div>
+                                        <div className="flex-1 min-w-[200px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Temporary Password</label>
+                                            <input required type="password" value={newClientForm.password} onChange={e => setNewClientForm({ ...newClientForm, password: e.target.value })} className="w-full bg-white px-6 py-4 rounded-[20px] border border-slate-200 text-sm font-black outline-none focus:border-emerald-500 shadow-sm" placeholder="••••••••" />
+                                        </div>
+                                        <div className="flex-1 min-w-[200px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Contact Mobile</label>
+                                            <input required type="text" value={newClientForm.phone} onChange={e => setNewClientForm({ ...newClientForm, phone: e.target.value })} className="w-full bg-white px-6 py-4 rounded-[20px] border border-slate-200 text-sm font-black outline-none focus:border-emerald-500 shadow-sm" placeholder="+1234567890" />
+                                        </div>
+                                        <button type="submit" className="bg-emerald-600 text-white px-10 py-4 rounded-[20px] font-black text-[11px] uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg active:scale-95">
+                                            Authorize
+                                        </button>
+                                    </form>
+                                </motion.div>
+                            )}
+
                             {isAssigning && (
                                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mb-10 overflow-hidden">
                                     <form onSubmit={handleAssignDevice} className="bg-slate-50 p-10 rounded-[40px] border border-slate-100 flex flex-wrap gap-8 items-end">
@@ -504,6 +626,14 @@ export default function AdminDashboard({
                                                 <option value="">Select Unassigned Unit...</option>
                                                 {inventory.filter(i => !i.is_assigned).map(i => <option key={i.imei} value={i.imei}>{i.imei}</option>)}
                                             </select>
+                                        </div>
+                                        <div className="flex-1 min-w-[250px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Vehicle Number</label>
+                                            <input required type="text" value={assignForm.vehicleNumber} onChange={e => setAssignForm({ ...assignForm, vehicleNumber: e.target.value })} className="w-full bg-white px-6 py-4 rounded-[20px] border border-slate-200 text-sm font-black outline-none focus:border-blue-500 transition-all shadow-sm" placeholder="ABC-1234" />
+                                        </div>
+                                        <div className="flex-1 min-w-[250px]">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-3">Driver Name</label>
+                                            <input required type="text" value={assignForm.driverName} onChange={e => setAssignForm({ ...assignForm, driverName: e.target.value })} className="w-full bg-white px-6 py-4 rounded-[20px] border border-slate-200 text-sm font-black outline-none focus:border-blue-500 transition-all shadow-sm" placeholder="Pilot Name" />
                                         </div>
                                         <button type="submit" className="bg-emerald-500 text-black px-12 py-4 rounded-[20px] font-black uppercase tracking-widest text-[11px] self-end h-[60px] shadow-lg shadow-emerald-100 hover:scale-105 active:scale-95 transition-all">Authorize Node</button>
                                     </form>
@@ -541,6 +671,12 @@ export default function AdminDashboard({
                                             </td>
                                             <td className="py-8 px-5 text-right">
                                                 <div className="flex justify-end gap-3">
+                                                    <button
+                                                        onClick={() => handleImpersonate(c.id)}
+                                                        className="px-5 py-2.5 rounded-[12px] text-[10px] font-black uppercase tracking-widest bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-lg hover:scale-105"
+                                                    >
+                                                        Remote Access
+                                                    </button>
                                                     <button
                                                         onClick={() => {
                                                             const client = clients.find(cl => cl.id === c.id);
@@ -808,7 +944,7 @@ export default function AdminDashboard({
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                             {[
                                 { label: 'Server Uptime', v: health?.uptime || 'N/A', icon: Clock, desc: 'Session continuity index' },
-                                { label: 'Volatile Cache', v: health?.redisStatus || 'N/A', icon: Zap, desc: 'Real-time pub/sub pipe' },
+                                { label: 'Data Retention', v: 'LIFETIME', icon: Shield, desc: 'Strategic permanence policy' },
                                 { label: 'Persistence Load', v: health?.dbStats?.dbSize || 'N/A', icon: Database, desc: 'PostgreSQL storage footprint' },
                             ].map((h, i) => (
                                 <div key={i} className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm">
@@ -831,6 +967,7 @@ export default function AdminDashboard({
                             <div className="flex justify-between items-start relative z-10">
                                 <div>
                                     <h3 className="text-3xl font-black italic tracking-tighter mb-4">Master Ledger Snapshot</h3>
+                                    <p className="text-slate-400 text-xs font-bold uppercase tracking-widest max-w-xl text-emerald-400">LIFETIME DATA PERSISTENCE: ENABLED</p>
                                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest max-w-xl">Deep system inspection of telemetry partitions. Data is automatically mirrored to Google Cloud every 24 hours.</p>
                                 </div>
                                 <div className="text-right">
@@ -867,7 +1004,7 @@ export default function AdminDashboard({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                             <div className="space-y-8">
                                 <div className="p-8 bg-slate-50 rounded-[32px] border border-slate-100 italic font-black text-slate-500 text-sm leading-relaxed">
-                                    "Platform persistence is prioritized. Cold telemetry older than 90 phases is automatically offloaded to the legacy data centers for historical compliance."
+                                    "Platform persistence is prioritized. Cold telemetry is never purged from the primary ledger, ensuring lifetime tracking history. Cloud redundancy provides a full disaster recovery fail-safe."
                                 </div>
                                 <div className="flex flex-col gap-4">
                                     <button onClick={triggerBackup} disabled={backupLoading} className="w-full bg-slate-900 text-white rounded-[24px] py-6 font-black uppercase tracking-[0.2em] text-[11px] shadow-2xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50">
@@ -1013,78 +1150,92 @@ export default function AdminDashboard({
                     </div>
                 )}
 
-                {/* ── COMMANDS (Mapping Matrix) ── */}
+                {/* ── COMMANDS (GPRS Templates) ── */}
                 {activeTab === 'commands' && (
                     <div className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm animate-in slide-in-from-right-10 duration-700">
                         <div className="flex justify-between items-center mb-12">
                             <div>
-                                <h3 className="text-3xl font-black text-slate-900 italic tracking-tighter">Command Mapping Matrix</h3>
-                                <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mt-2">Translate Logical Directives to Protocol Strings</p>
+                                <h3 className="text-3xl font-black text-slate-900 italic tracking-tighter">GPRS Command Matrix</h3>
+                                <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mt-2">Define Protocol-Specific Execution Strings</p>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Selected Model:</span>
-                                <select value={selectedModelId} onChange={e => setSelectedModelId(e.target.value)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest outline-none shadow-xl">
-                                    <option value="">Choose Target Model...</option>
-                                    {deviceModels.map(m => <option key={m.id} value={m.id}>{m.model_name}</option>)}
-                                </select>
-                            </div>
+                            <button
+                                onClick={() => {
+                                    const proto = prompt('Enter Protocol (e.g., GT06, TK103, Teltonika):');
+                                    const act = prompt('Enter Action (IGNITION_ON / IGNITION_OFF):');
+                                    const str = prompt('Enter Command String:');
+                                    if (proto && act && str) handleSaveTemplate({ protocol: proto, action: act, command_string: str, description: `Remote ${act} for ${proto}` });
+                                }}
+                                className="bg-slate-900 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 shadow-xl hover:-translate-y-1 transition-all active:scale-95"
+                            >
+                                <Plus size={14} /> New Blueprint
+                            </button>
                         </div>
 
-                        {selectedModelId ? (
-                            <div className="overflow-x-auto no-scrollbar">
-                                <table className="w-full text-left">
-                                    <thead><tr>
-                                        <th className={thC}>Logical Directive</th>
-                                        <th className={thC}>Description</th>
-                                        <th className={thC}>Raw Payload Template</th>
+                        <div className="overflow-x-auto no-scrollbar">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-slate-100">
+                                        <th className={thC}>Protocol Stack</th>
+                                        <th className={thC}>Directives</th>
+                                        <th className={thC}>Execution String</th>
                                         <th className={thC + ' text-right'}>Operations</th>
-                                    </tr></thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {logicalCmds.map((lc, i) => {
-                                            const map = commandMappings.find(m => m.logical_id === lc.id);
-                                            return (
-                                                <tr key={i} className="hover:bg-slate-50 transition-colors group">
-                                                    <td className="py-8 px-5">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-slate-900 text-emerald-400 flex items-center justify-center">
-                                                                <Zap size={14} />
-                                                            </div>
-                                                            <span className="text-xs font-black text-slate-900 uppercase tracking-tight">{lc.command_name}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-8 px-5">
-                                                        <span className="text-[10px] font-medium text-slate-500">{lc.description}</span>
-                                                    </td>
-                                                    <td className="py-8 px-5">
-                                                        <div className="relative">
-                                                            <input
-                                                                defaultValue={map?.payload || ''}
-                                                                onBlur={e => handleUpdateMapping(lc.id, e.target.value)}
-                                                                placeholder="e.g. RELAY,1#"
-                                                                className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl text-xs font-mono text-blue-600 focus:border-blue-500 outline-none transition-all shadow-inner"
-                                                            />
-                                                            {mappingSaveStatus[lc.id] && (
-                                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500 font-black text-[10px]">
-                                                                    {mappingSaveStatus[lc.id]}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-8 px-5 text-right">
-                                                        <button className="text-[9px] font-black text-slate-300 uppercase tracking-widest hover:text-slate-900 transition-colors">Test Stream</button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div className="py-40 flex flex-col items-center justify-center text-slate-300 gap-6 grayscale opacity-40 italic">
-                                <Layers size={80} />
-                                <div className="text-sm font-black uppercase tracking-[0.3em]">Handshake Required: Select Hardware DNA Model</div>
-                            </div>
-                        )}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {commandTemplates.map((t, i) => (
+                                        <tr key={i} className="hover:bg-slate-50 transition-colors group">
+                                            <td className="py-8 px-5">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-10 h-10 rounded-2xl bg-slate-900 text-emerald-400 flex items-center justify-center shadow-lg">
+                                                        <Cpu size={18} />
+                                                    </div>
+                                                    <span className="text-sm font-black text-slate-900 uppercase italic tracking-tighter">{t.protocol}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-8 px-5">
+                                                <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 ${t.action === 'IGNITION_ON' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                                                    }`}>
+                                                    {t.action}
+                                                </span>
+                                            </td>
+                                            <td className="py-8 px-5">
+                                                <div className="relative group/input max-w-md">
+                                                    <input
+                                                        defaultValue={t.command_string}
+                                                        onBlur={(e) => handleSaveTemplate({ ...t, command_string: e.target.value })}
+                                                        className="w-full bg-slate-50 border border-slate-200 px-5 py-3 rounded-xl text-xs font-mono font-black text-blue-600 focus:bg-white focus:border-blue-500 outline-none transition-all shadow-inner"
+                                                    />
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover/input:opacity-100 transition-opacity text-[8px] font-black uppercase text-slate-400 tracking-widest">Auto-Save</div>
+                                                </div>
+                                            </td>
+                                            <td className="py-8 px-5 text-right">
+                                                <button
+                                                    onClick={async () => {
+                                                        if (confirm('Erase this execution blueprint?')) {
+                                                            await fetch(`${API_BASE}/api/admin/command-templates/${t.id}`, { method: 'DELETE' });
+                                                            fetchCommandTemplates();
+                                                        }
+                                                    }}
+                                                    className="w-10 h-10 bg-rose-50 text-rose-400 rounded-xl flex items-center justify-center hover:bg-rose-600 hover:text-white transition-all shadow-sm active:scale-90"
+                                                >
+                                                    <X size={18} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {commandTemplates.length === 0 && (
+                                        <tr>
+                                            <td colSpan="4" className="py-32 text-center">
+                                                <div className="flex flex-col items-center gap-6 grayscale opacity-40 italic">
+                                                    <Zap size={64} className="animate-pulse" />
+                                                    <div className="text-sm font-black uppercase tracking-[0.4em] text-slate-300">No Execution Templates Initialized</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
 
@@ -1179,6 +1330,74 @@ export default function AdminDashboard({
                                     <span className="text-sm font-black text-slate-400 uppercase tracking-widest">No Alerts Recorded</span>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* ── MAINTENANCE (Backup) ── */}
+                {activeTab === 'backup' && (
+                    <div className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm animate-in fade-in duration-700">
+                        <div className="flex justify-between items-center mb-10">
+                            <div>
+                                <h3 className="text-3xl font-black text-slate-900 italic tracking-tighter">Maintenance Matrix</h3>
+                                <p className="text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] mt-2">Disaster Recovery & System Cooldown</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                            <div className="bg-slate-50/50 rounded-[32px] border border-slate-100 p-10">
+                                <div className="flex items-center gap-5 mb-8">
+                                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm">
+                                        <Database size={24} />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-black text-slate-900 uppercase tracking-tight">Cloud Snapshot</div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Automated System Redundancy</div>
+                                    </div>
+                                </div>
+                                <div className="space-y-6">
+                                    <div className="flex justify-between items-center py-4 border-b border-slate-100">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Last Execution</span>
+                                        <span className="text-xs font-black text-slate-900">{backupStatus?.lastBackup || 'Never'}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center py-4 border-b border-slate-100">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Archive Size</span>
+                                        <span className="text-xs font-black text-slate-900">{backupStatus?.fileSize || '0 KB'}</span>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={triggerBackup}
+                                    disabled={backupLoading}
+                                    className="w-full mt-10 py-5 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-3 hover:scale-[1.02] shadow-xl transition-all disabled:opacity-50"
+                                >
+                                    {backupLoading ? <RefreshCcw size={14} className="animate-spin" /> : <Clock size={14} />}
+                                    Commence Global Backup
+                                </button>
+                                {backupMsg && (
+                                    <div className="mt-4 p-4 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase text-center border border-emerald-100">
+                                        {backupMsg}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-slate-50/50 rounded-[32px] border border-slate-100 p-10">
+                                <div className="flex items-center gap-5 mb-8">
+                                    <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-emerald-500 shadow-sm">
+                                        <Shield size={24} />
+                                    </div>
+                                    <div>
+                                        <div className="text-sm font-black text-slate-900 uppercase tracking-tight">System Integrity</div>
+                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Health Parameters</div>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-slate-500 leading-relaxed font-bold uppercase tracking-wider">
+                                    Performing system maintenance ensures 99.99% uptime and protects sovereign data against local corruption or hardware failure.
+                                </p>
+                                <div className="mt-10 p-6 bg-white rounded-2xl border border-slate-100 flex items-center gap-4">
+                                    <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                                    <div className="text-[10px] font-black text-slate-900 uppercase tracking-widest">All Nodes Synchronized</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
