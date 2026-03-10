@@ -122,10 +122,10 @@ const server = net.createServer((socket) => {
                     const deviceId = deviceRes.rows[0].id;
                     const isIgnitionOn = parsed.acc === 1 || parsed.speed > 0; // fallback proxy for acc
 
-                    // Upsert Live Data
+                    // Upsert Live Data: Only update if the incoming packet is newer or same age as current live record
                     await pool.query(`
                         INSERT INTO gps_live_data (device_id, latitude, longitude, speed, heading, ignition, timestamp)
-                        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
                         ON CONFLICT (device_id) DO UPDATE SET
                             latitude = EXCLUDED.latitude,
                             longitude = EXCLUDED.longitude,
@@ -133,21 +133,29 @@ const server = net.createServer((socket) => {
                             heading = EXCLUDED.heading,
                             ignition = EXCLUDED.ignition,
                             timestamp = EXCLUDED.timestamp
-                    `, [deviceId, parsed.lat, parsed.lng, parsed.speed, parsed.heading, isIgnitionOn]);
+                        WHERE EXCLUDED.timestamp >= gps_live_data.timestamp
+                    `, [deviceId, parsed.lat, parsed.lng, parsed.speed, parsed.heading, isIgnitionOn, parsed.timestamp]);
 
                     // Append to History
                     // Note: Ensure gps_history is partitioned or table exists.
                     await pool.query(`
                         INSERT INTO gps_history (device_id, latitude, longitude, speed, heading, ignition, timestamp)
-                        VALUES ($1, $2, $3, $4, $5, $6, NOW())
-                    `, [deviceId, parsed.lat, parsed.lng, parsed.speed, parsed.heading, isIgnitionOn]);
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    `, [deviceId, parsed.lat, parsed.lng, parsed.speed, parsed.heading, isIgnitionOn, parsed.timestamp]);
                 }
 
                 // 1. Store latest position in Redis Hash (for REST API reads)
                 await redisClient.hSet(`live:${deviceImei}`, locationData);
 
                 // 2. Publish to pub/sub channel for WebSocket broadcasting
-                const pubMsg = JSON.stringify({ ...locationData, lat: parsed.lat, lng: parsed.lng, speed: parsed.speed, heading: parsed.heading });
+                const pubMsg = JSON.stringify({
+                    ...locationData,
+                    lat: parsed.lat,
+                    lng: parsed.lng,
+                    speed: parsed.speed,
+                    heading: parsed.heading,
+                    isRealTime: parsed.isRealTime
+                });
                 await redisPub.publish('gps:updates', pubMsg);
             } catch (err) {
                 console.error(`[Redis] Failed to store/publish for ${deviceImei}:`, err);

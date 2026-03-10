@@ -172,13 +172,13 @@ export default function Reports({ fleet = [] }) {
                     </div>
                     <div>
                         <h1 className="text-2xl font-black tracking-tight">Fleet Reports</h1>
-                        <p className="text-slate-500 font-medium text-sm">Generate, view, and export detailed analytical reports</p>
+                        <p className="text-slate-600 font-medium text-sm">Generate, view, and export detailed analytical reports</p>
                     </div>
                 </div>
 
                 <div className="grid md:grid-cols-4 gap-4">
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Report Type</label>
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Report Type</label>
                         <div className="relative">
                             <select
                                 className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2.5 pl-4 pr-10 text-sm font-bold text-slate-900 appearance-none focus:border-blue-500 outline-none"
@@ -192,7 +192,7 @@ export default function Reports({ fleet = [] }) {
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Device / Group</label>
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Device / Group</label>
                         <div className="relative">
                             <select
                                 value={selectedDevice}
@@ -209,7 +209,7 @@ export default function Reports({ fleet = [] }) {
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Date Range</label>
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Date Range</label>
                         <div className="relative flex items-center gap-2">
                             <input
                                 type="datetime-local"

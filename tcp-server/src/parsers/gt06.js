@@ -136,12 +136,10 @@ class GT06Parser {
         const satCount = (buf[dataStart + 6] >> 4) & 0x0F;
 
         // Latitude: 4 bytes big-endian unsigned int
-        const latRaw = (buf[dataStart + 7] << 24) | (buf[dataStart + 8] << 16) |
-            (buf[dataStart + 9] << 8) | buf[dataStart + 10];
+        const latRaw = buf.readUInt32BE(dataStart + 7);
 
         // Longitude: 4 bytes big-endian unsigned int
-        const lngRaw = (buf[dataStart + 11] << 24) | (buf[dataStart + 12] << 16) |
-            (buf[dataStart + 13] << 8) | buf[dataStart + 14];
+        const lngRaw = buf.readUInt32BE(dataStart + 11);
 
         const speed = buf[dataStart + 15]; // km/h
 
@@ -158,10 +156,11 @@ class GT06Parser {
          * Bit 3: 1=North, 0=South
          * Bit 2,1,0: High bits of Course
          */
+        const isRealTime = !!(courseByte0 & 0x40);
         const isFixed = !!(courseByte0 & 0x20);
-        const isEast = !!(courseByte0 & 0x10);
-        const isNorth = !!(courseByte0 & 0x08);
-        
+        const isEast = !(courseByte0 & 0x10); // 0=East, 1=West
+        const isNorth = !!(courseByte0 & 0x08); // 1=North, 0=South
+
         // Heading/Course is bits 2,1,0 of courseByte0 + all 8 bits of courseByte1
         const heading = ((courseByte0 & 0x07) << 8) | courseByte1;
 
@@ -172,6 +171,11 @@ class GT06Parser {
         // Apply hemisphere corrections based on N/S and E/W flags
         if (!isNorth) lat = -lat; // South is negative
         if (!isEast) lng = -lng;  // West is negative
+
+        // Final sanity check for world bounds
+        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+            return { valid: false, reason: `Parsed coordinates out of bounds: ${lat}, ${lng}` };
+        }
 
         const timestamp = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
 
@@ -185,6 +189,7 @@ class GT06Parser {
             heading,
             satellites: satCount,
             gpsFixed: isFixed,
+            isRealTime,
             timestamp: timestamp.toISOString(),
             serial
         };

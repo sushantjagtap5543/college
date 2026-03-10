@@ -14,17 +14,17 @@ import 'leaflet/dist/leaflet.css';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const TABS = [
-    { id: 'dashboard', label: 'Command Center', icon: Activity },
-    { id: 'reports', label: 'Operations', icon: Layers },
-    { id: 'clients', label: 'Accounts', icon: Users },
-    { id: 'vehicles', label: 'Fleet Control', icon: Shield },
-    { id: 'devices', label: 'Hardware', icon: Server },
-    { id: 'models', label: 'Protocols', icon: Target },
-    { id: 'commands', label: 'Cmd Mapping', icon: Zap },
-    { id: 'logs', label: 'Audit Trail', icon: Search },
-    { id: 'alerts', label: 'Alert History', icon: AlertCircle },
-    { id: 'health', label: 'System', icon: Database },
-    { id: 'backup', label: 'Recovery', icon: Clock }
+    { id: 'dashboard', label: 'Overview', icon: Activity },
+    { id: 'reports', label: 'Payments', icon: Layers },
+    { id: 'clients', label: 'Customers', icon: Users },
+    { id: 'vehicles', label: 'All Vehicles', icon: Shield },
+    { id: 'devices', label: 'Stock', icon: Server },
+    { id: 'models', label: 'Device Setup', icon: Target },
+    { id: 'commands', label: 'Remote Cmds', icon: Zap },
+    { id: 'logs', label: 'Activity Logs', icon: Search },
+    { id: 'alerts', label: 'Live Alerts', icon: AlertCircle },
+    { id: 'health', label: 'System Health', icon: Database },
+    { id: 'backup', label: 'Maintenance', icon: Clock }
 ];
 
 export default function AdminDashboard({
@@ -32,7 +32,7 @@ export default function AdminDashboard({
     smsForm, setSmsForm, isSmsSending, smsStatus, handleSmsDispatch,
     isAddingDevice, setIsAddingDevice, newDevice, setNewDevice, handleAddInventory,
     isAssigning, setIsAssigning, assignForm, setAssignForm, handleAssignDevice,
-    handleToggleBlock, handleRenew, handleUpdateClient, API_BASE
+    handleToggleBlock, handleRenew, handleUpdateClient, handleUpdateBilling, API_BASE
 }) {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [health, setHealth] = useState(null);
@@ -329,7 +329,7 @@ export default function AdminDashboard({
                                     </div>
                                     <div>
                                         <div className="text-3xl font-black text-slate-900">{k.v}</div>
-                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{k.label}</div>
+                                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{k.label}</div>
                                     </div>
                                 </motion.div>
                             ))}
@@ -1148,7 +1148,7 @@ export default function AdminDashboard({
                         <div className="flex justify-between items-center mb-10">
                             <div>
                                 <h3 className="text-3xl font-black text-slate-900 italic tracking-tighter">Security Incidents</h3>
-                                <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] mt-2">Full Archive of System & Asset Alerts</p>
+                                <p className="text-slate-600 font-bold text-[10px] uppercase tracking-[0.2em] mt-2">Full Archive of System & Asset Alerts</p>
                             </div>
                             <button onClick={fetchAlerts} className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-900 hover:text-white transition-all shadow-sm">
                                 <RefreshCcw size={18} />

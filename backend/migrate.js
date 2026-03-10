@@ -16,6 +16,11 @@ async function migrate() {
 
         await pool.query("ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;");
         console.log("Migration successful: Added is_active column to vehicles.");
+
+        await pool.query("ALTER TABLE geofences ADD COLUMN IF NOT EXISTS coordinates JSONB;");
+        await pool.query("ALTER TABLE geofences ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id);");
+        await pool.query("ALTER TABLE geofences ALTER COLUMN geom DROP NOT NULL;"); // Allow null if not using PostGIS yet
+        console.log("Migration successful: Updated geofences schema.");
     } catch (err) {
         console.error("Migration failed:", err);
     } finally {

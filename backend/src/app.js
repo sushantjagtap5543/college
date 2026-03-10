@@ -187,10 +187,14 @@ const SPEED_LIMIT_KMH = 80;
 
 function pointInPolygon(lat, lng, points) {
     let inside = false;
+    // points are [lat, lng]
     for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-        const xi = points[i][1], yi = points[i][0];
-        const xj = points[j][1], yj = points[j][0];
-        if (((yi > lng) !== (yj > lng)) && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi)) inside = !inside;
+        const xi = points[i][0], yi = points[i][1]; // xi=lat, yi=lng
+        const xj = points[j][0], yj = points[j][1]; // xj=lat, yj=lng
+
+        const intersect = ((yi > lng) !== (yj > lng))
+            && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
     }
     return inside;
 }
@@ -239,9 +243,24 @@ const setupRedisAlertSubscriber = async () => {
             } catch { /* continue */ }
 
             // Forward LOCATION_UPDATE to socket rooms in real-time
-            const locPayload = { imei, lat: latN, lng: lngN, speed: speedN, heading: parseFloat(msg.heading) || 0, satellites: msg.satellites, gps_fixed: msg.gps_fixed };
-            io.to(`imei_${imei}`).emit('LOCATION_UPDATE', locPayload);
-            io.to('admin_room').emit('LOCATION_UPDATE', locPayload);
+            // ONLY if it is a real-time packet (not a re-upload of historical data)
+            if (msg.isRealTime !== false) {
+                const locPayload = {
+                    imei,
+                    lat: latN,
+                    lng: lngN,
+                    speed: speedN,
+                    heading: parseFloat(msg.heading) || 0,
+                    satellites: msg.satellites,
+                    gps_fixed: msg.gps_fixed,
+                    timestamp: msg.device_timestamp // Use original device time
+                };
+                io.to(`imei_${imei}`).emit('LOCATION_UPDATE', locPayload);
+                io.to('admin_room').emit('LOCATION_UPDATE', locPayload);
+            }
+
+            // High-frequency history storage for re-uploads is already handled by tcp-server directly into DB.
+            // But we process alerts (overspeed/geofence) for ALL packets to ensure history has correct alerts.
 
             // Overspeed detection (transition-based)
             if (!geofenceStateCache[imei]) geofenceStateCache[imei] = { lastSpeed: 0 };
@@ -250,7 +269,7 @@ const setupRedisAlertSubscriber = async () => {
                 emitAlert(imei, {
                     type: 'OVERSPEED', imei, vehicleName, plate: plateNumber, lat: latN, lng: lngN,
                     message: `Vehicle "${vehicleName}" (${plateNumber}) overspeeding at ${Math.round(speedN)} km/h. Limit: ${SPEED_LIMIT_KMH} km/h. IMEI: ${imei}. Location: ${latN.toFixed(5)}, ${lngN.toFixed(5)}.`,
-                    timestamp: new Date().toISOString(),
+                    timestamp: msg.device_timestamp || new Date().toISOString(),
                 });
             }
             geofenceStateCache[imei].lastSpeed = speedN;
@@ -282,7 +301,7 @@ const setupRedisAlertSubscriber = async () => {
                             imei, vehicleName, plate: plateNumber, lat: latN, lng: lngN,
                             geofenceName: geo.name,
                             message: `Vehicle "${vehicleName}" (Plate: ${plateNumber}, IMEI: ${imei}) has ${isEntry ? 'ENTERED' : 'EXITED'} geofence zone "${geo.name}". Location: ${latN.toFixed(5)}, ${lngN.toFixed(5)}.`,
-                            timestamp: new Date().toISOString(),
+                            timestamp: msg.device_timestamp || new Date().toISOString(),
                         });
                     }
                 }
@@ -789,6 +808,22 @@ app.post('/api/admin/clients/update', async (req, res) => {
     }
 });
 
+// 4e. Admin Update Billing (Plan/Expiry)
+app.patch('/api/admin/clients/:userId/billing', async (req, res) => {
+    const { userId } = req.params;
+    const { subscriptionPlan, subscriptionEndDate } = req.body;
+    try {
+        await pool.query(
+            "UPDATE users SET subscription_plan = $1, subscription_end_date = $2 WHERE id = $3",
+            [subscriptionPlan, subscriptionEndDate || null, userId]
+        );
+        res.json({ status: 'SUCCESS', message: 'Billing manually updated by authority override.' });
+    } catch (err) {
+        console.error('Billing Update Error:', err);
+        res.status(500).json({ status: 'ERROR', message: 'Override failed at database layer.' });
+    }
+});
+
 // --- ADVANCED ADMIN CONTROLS: DATA ARCHIVAL & BACKUPS ---
 
 // Daily Google Drive Backup Task (Running at 1 AM)
@@ -925,11 +960,11 @@ app.get('/api/geofences', async (req, res) => {
 });
 
 app.post('/api/geofences', async (req, res) => {
-    const { name, fence_type, coordinates, userId } = req.body;
+    const { name, fence_type, coordinates, user_id } = req.body;
     try {
         await pool.query(
             'INSERT INTO geofences (name, fence_type, coordinates, user_id) VALUES ($1, $2, $3, $4)',
-            [name, fence_type, JSON.stringify(coordinates), userId]
+            [name, fence_type, JSON.stringify(coordinates), user_id]
         );
         res.json({ status: 'SUCCESS' });
     } catch (err) {

@@ -1361,10 +1361,9 @@ const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
             if (drawMode === 'circle' && newPoints.length === 2) {
                 const radius = newPoints[0].distanceTo(newPoints[1]);
                 onComplete({ type: 'CIRCLE', center: newPoints[0], radius });
-                setPoints([]);
+                // Don't reset points immediately, wait for parent to handle it or for unmount
             } else if (drawMode === 'rectangle' && newPoints.length === 2) {
                 onComplete({ type: 'POLYGON', bounds: [newPoints[0], newPoints[1]] });
-                setPoints([]);
             } else {
                 setPoints(newPoints);
             }
@@ -1373,15 +1372,18 @@ const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
             L.DomEvent.stopPropagation(e);
             if (drawMode === 'polygon' && points.length >= 3) {
                 onComplete({ type: 'POLYGON', points });
-                setPoints([]);
             } else if (drawMode === 'route' && points.length >= 2) {
                 onComplete({ type: 'ROUTE', points });
-                setPoints([]);
             }
         }
     });
 
-    if (!drawMode || points.length === 0) return null;
+    // Reset points when drawMode changes or unmounts
+    useEffect(() => {
+        return () => setPoints([]);
+    }, [drawMode]);
+
+    if (!drawMode) return null;
 
     return (
         <React.Fragment>
@@ -1397,7 +1399,7 @@ const GeofenceDrawerLayer = ({ drawMode, onComplete }) => {
         </React.Fragment>
     );
 };
-const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setTheme, user }) => {
+const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setTheme, user, pendingCommands, setPendingCommands, addToast }) => {
     const [selectedVehicle, setSelectedVehicle] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('Objects');
@@ -1451,13 +1453,17 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
     // --- Geofence Draw State ---
     const [drawMode, setDrawMode] = useState(null); // 'circle', 'rectangle', 'polygon', null
+    const [showGeofenceModal, setShowGeofenceModal] = useState(false);
+    const [drawnData, setDrawnData] = useState(null);
+    const [geofenceName, setGeofenceName] = useState('');
 
-    const handleGeofenceComplete = (drawnData) => {
-        const name = prompt("Enter a name for this Geofence:");
-        if (!name) {
-            setDrawMode(null);
-            return;
-        }
+    const handleGeofenceComplete = (data) => {
+        setDrawnData(data);
+        setShowGeofenceModal(true);
+    };
+
+    const saveGeofence = () => {
+        if (!geofenceName.trim()) return;
 
         let formattedCoords;
         if (drawnData.type === 'CIRCLE') {
@@ -1475,7 +1481,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
 
         const newGeofence = {
             id: Date.now(),
-            name,
+            name: geofenceName,
             fence_type: drawnData.type,
             coordinates: formattedCoords
         };
@@ -1484,12 +1490,19 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
         fetch(`${API_BASE}/api/geofences`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: user.id, ...newGeofence })
+            body: JSON.stringify({
+                user_id: user.id, // Align with schema
+                name: geofenceName,
+                fence_type: drawnData.type,
+                coordinates: formattedCoords
+            })
         }).catch(err => console.error("Geofence sync failed", err));
 
         setGeofences(prev => [...prev, newGeofence]);
         setDrawMode(null);
-        alert(`Geofence '${name}' created and saved!`);
+        setDrawnData(null);
+        setGeofenceName('');
+        setShowGeofenceModal(false);
     };
 
     // (Using user from props)
@@ -1603,8 +1616,20 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
             if (data.status === 'SUCCESS') {
                 setShowPinModal(false);
                 setPinCode('');
-                alert(`SUCCESS: Command ${commandToRun} Dispatched.`);
-                // Update local state temporarily
+                // Add to globally tracked pending commands
+                setPendingCommands(prev => ({
+                    ...prev,
+                    [selectedVehicle.id]: { type: commandToRun, timestamp: Date.now() }
+                }));
+                addToast({
+                    type: 'GEOFENCE_ENTER',
+                    vehicleName: selectedVehicle.name,
+                    severity: 'info',
+                    message: `Command "${commandToRun}" Dispatched. Waiting for device confirmation...`,
+                    timestamp: new Date(),
+                    imei: selectedVehicle.id
+                });
+                // Temporarily update local state for immediate feedback
                 setSelectedVehicle(prev => ({ ...prev, ignition: !prev.ignition }));
             } else {
                 setPinError(data.message || 'Dispatch Failed.');
@@ -1928,6 +1953,54 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                     )}
                 </AnimatePresence>
 
+                {/* Geofence Naming Modal */}
+                <AnimatePresence>
+                    {showGeofenceModal && (
+                        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                className="bg-white dark:bg-slate-900 rounded-[32px] p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800"
+                            >
+                                <div className="text-2xl font-black text-slate-800 dark:text-white mb-2 tracking-tight">Configure Geofence</div>
+                                <div className="text-sm text-slate-500 dark:text-slate-400 mb-6 font-medium">Please provide a unique identifier for this security zone.</div>
+
+                                <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">Zone Name</label>
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            value={geofenceName}
+                                            onChange={(e) => setGeofenceName(e.target.value)}
+                                            placeholder="e.g., Main Warehouse A"
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 rounded-2xl px-5 py-4 text-slate-800 dark:text-white focus:border-blue-500 focus:outline-none transition-all outline-none font-bold"
+                                            onKeyDown={(e) => e.key === 'Enter' && saveGeofence()}
+                                        />
+                                    </div>
+
+                                    <div className="flex gap-3 pt-2">
+                                        <button
+                                            onClick={() => { setShowGeofenceModal(false); setDrawMode(null); setGeofenceName(''); }}
+                                            className="flex-1 py-4 rounded-2xl font-black text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                                        >
+                                            Discard
+                                        </button>
+                                        <button
+                                            onClick={saveGeofence}
+                                            disabled={!geofenceName.trim()}
+                                            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-2xl font-black text-sm text-white shadow-lg shadow-blue-500/30 transition-all uppercase tracking-widest"
+                                        >
+                                            Save Zone
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
                 {/* Floating Info Panel - GEOSUREPATH THEME */}
                 {selectedVehicle && (
                     <motion.div
@@ -1960,7 +2033,14 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                         <tr className="border-b border-slate-100">
                                             <td className="p-2 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium"><Power size={14} /> Ignition</td>
                                             <td className="p-2 font-semibold">
-                                                {selectedVehicle.ignition ? <span className="text-green-600">ON</span> : <span className="text-slate-500">OFF</span>}
+                                                {selectedVehicle.ignition ? (
+                                                    <span className="text-green-600">ON</span>
+                                                ) : (
+                                                    <div className="flex flex-col">
+                                                        <span className="text-slate-500">OFF</span>
+                                                        <span className="text-[10px] text-red-600 font-black uppercase tracking-tighter mt-0.5">⚠️ Engine Kill Active</span>
+                                                    </div>
+                                                )}
                                             </td>
                                         </tr>
                                         <tr className="border-b border-slate-100">
@@ -2276,6 +2356,7 @@ export default function App() {
     });
 
     const [fleet, setFleet] = useState([]);
+    const [pendingCommands, setPendingCommands] = useState({}); // { imei: { type, timestamp } }
     const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
     const [mapTile, setMapTile] = useState(localStorage.getItem('mapTile') || 'street');
     useEffect(() => { localStorage.setItem('mapTile', mapTile); }, [mapTile]);
@@ -2347,7 +2428,10 @@ export default function App() {
                             fuel: pos.attributes?.fuel,
                             battery: pos.attributes?.battery || pos.attributes?.batteryLevel,
                             temp: pos.attributes?.temp1 || pos.attributes?.temperature,
-                            lastUpdate: pos.deviceTime || Date.now()
+                            lastUpdate: pos.deviceTime || Date.now(),
+                            iconType: getVehicleIconPref(dev.uniqueId),
+                            color: getVehicleColorPref(dev.uniqueId),
+                            commandPending: false // Placeholder for command feedback loop
                         };
                     });
                     if (traccarFleet.length > 0) {
@@ -2364,7 +2448,7 @@ export default function App() {
         };
 
         fetchFleet();
-        const interval = setInterval(fetchFleet, 10000);
+        const interval = setInterval(fetchFleet, 3000);
 
         // Socket.IO for real-time updates
         const socket = io(API_BASE, {
@@ -2388,9 +2472,32 @@ export default function App() {
                             lng: parseFloat(msg.lng),
                             speed: parseInt(msg.speed) || 0,
                             heading: parseInt(msg.heading) || 0,
-                            status: parseInt(msg.speed) > 2 ? 'moving' : 'idle',
+                            status: (parseInt(msg.speed) > 2) ? 'moving' : (newIgnition ? 'idle' : 'stopped'),
                             ignition: newIgnition,
+                            fuel: msg.fuel || v.fuel,
+                            battery: msg.battery || v.battery,
+                            temp: msg.temp || v.temp,
+                            lastUpdate: msg.timestamp || Date.now()
                         };
+
+                        // Command Confirmation check
+                        const pending = pendingCommands[msg.imei];
+                        if (pending) {
+                            const targetIgnition = pending.type === 'RESTORE_ENGINE';
+                            if (newIgnition === targetIgnition) {
+                                const newPending = { ...pendingCommands };
+                                delete newPending[msg.imei];
+                                setPendingCommands(newPending);
+                                addToast({
+                                    type: 'IGNITION_ON',
+                                    vehicleName: v.name,
+                                    severity: 'info',
+                                    message: `COMMAND CONFIRMED: ${v.name} status updated to ${newIgnition ? 'ON' : 'KILLED'}.`,
+                                    timestamp: new Date(),
+                                    imei: msg.imei
+                                });
+                            }
+                        }
                         // Emit ignition ON/OFF toast
                         if (prevIgnition !== undefined && prevIgnition !== newIgnition) {
                             const type = newIgnition ? 'IGNITION_ON' : 'IGNITION_OFF';
@@ -2409,7 +2516,7 @@ export default function App() {
                             });
                         }
                         // Overspeed alert
-                        const speedLimit = 80;
+                        const speedLimit = v.speed_limit || 80;
                         if (parseInt(msg.speed) > speedLimit && v.speed <= speedLimit) {
                             const def = ALERT_TYPES.OVERSPEED;
                             addToast({
@@ -2567,6 +2674,9 @@ export default function App() {
                                     setMapTile={setMapTile}
                                     setTheme={setTheme}
                                     user={user}
+                                    pendingCommands={pendingCommands}
+                                    setPendingCommands={setPendingCommands}
+                                    addToast={addToast}
                                 />
                             } />
                             <Route path="/reports" element={<Reports fleet={fleet} />} />
