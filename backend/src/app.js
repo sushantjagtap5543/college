@@ -217,7 +217,7 @@ const createMockRedis = () => ({
 try {
     redisClient = redis.createClient({
         url: `redis://${process.env.REDIS_HOST || 'localhost'}:6379`,
-        socket: { reconnectStrategy: (retries) => (retries > 2 ? false : 500) }
+        socket: { reconnectStrategy: (retries) => (retries > 30 ? false : Math.min(retries * 100, 3000)) }
     });
     redisClient.on('error', () => { redisClient = createMockRedis(); });
     redisClient.connect().catch(() => { redisClient = createMockRedis(); });
@@ -324,7 +324,7 @@ const setupRedisAlertSubscriber = async () => {
     try {
         const redisSub = redis.createClient({
             url: `redis://${process.env.REDIS_HOST || 'localhost'}:6379`,
-            socket: { reconnectStrategy: (r) => (r > 5 ? false : 1000) }
+            socket: { reconnectStrategy: (r) => (r > 30 ? false : Math.min(r * 100, 3000)) }
         });
         redisSub.on('error', (e) => console.error('[AlertSub] Redis:', e.message));
         await redisSub.connect();
