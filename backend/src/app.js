@@ -7,7 +7,7 @@ const axios = require('axios');
 const { Pool } = require('pg');
 const redis = require('redis');
 
-const TRACCAR_URL = process.env.TRACCAR_URL || 'http://localhost:8082';
+const TRACCAR_URL = process.env.TRACCAR_URL || 'http://traccar:8082';
 const TRACCAR_USER = process.env.TRACCAR_USER || 'admin';
 const TRACCAR_PASS = process.env.TRACCAR_PASS || 'admin';
 const TRACCAR_AUTH = Buffer.from(`${TRACCAR_USER}:${TRACCAR_PASS}`).toString('base64');

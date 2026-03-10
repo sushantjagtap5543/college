@@ -29,12 +29,13 @@ services:
     container_name: gps_tcp_server
     restart: always
     ports:
-      - "5000:5000" # GPS Port required by user
-      - "5023:5023" # GT06 Port
-      - "5001:5001" # Another Port
+      - "5000:5000"
+      - "5023:5023"
+      - "5001:5001"
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - TRACCAR_URL=http://traccar:8082
     depends_on:
       - db
       - redis
@@ -48,7 +49,8 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
-      - JWT_SECRET=super_secret_key
+      - TRACCAR_URL=http://traccar:8082
+      - JWT_SECRET=super_secret_key_prod_123
     depends_on:
       - db
       - redis
