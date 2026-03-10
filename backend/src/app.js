@@ -12,6 +12,7 @@ const cron = require('node-cron');
 const googleDrive = require('./services/googleDrive');
 const fs = require('fs');
 const path = require('path');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const app = express();
 const CommandFactory = {
@@ -692,7 +693,6 @@ app.post('/api/admin/devices/assign', async (req, res) => {
 app.post('/api/geofences', async (req, res) => {
     const { name, fenceType, coordinates } = req.body;
     try {
-        // Constructing a basic PostGIS geometry string from coordinates
         // Assuming coordinates is an array of [lat, lng] pairs for POLYGON
         let geomString = '';
         if (fenceType === 'POLYGON') {
@@ -1087,40 +1087,95 @@ app.get('/api/history', async (req, res) => {
     }
 });
 
-// 6. Send Device Command (Engine Block / Restore / Custom SMS)
-app.post('/api/commands/sms', async (req, res) => {
+// 6. Send Device Command (Traccar-First GPRS / GPRS / SMS)
+app.post('/api/commands/send', async (req, res) => {
     const { deviceId, commandType, isAdminSms, adminMobile } = req.body;
 
     try {
-        let smsBody = '';
+        // 1. Attempt GPRS Command via Traccar API if available
+        try {
+            console.log(`[Traccar] Attempting GPRS command via Traccar API for ${deviceId}...`);
+            // Map our command types to Traccar internal command types
+            const typeMap = {
+                'CUT_ENGINE': 'engineStop',
+                'RESTORE_ENGINE': 'engineResume'
+            };
 
-        // 2. Admin Custom SMS Dispatch Route
-        if (isAdminSms) {
-            smsBody = commandType; // Directly use the custom string from the Admin Dashboard
-            console.log(`[Admin SMS Dispatch] Sender: ${adminMobile} | Target: ${deviceId} | Command: ${smsBody}`);
+            const traccarRes = await fetch(`${process.env.TRACCAR_URL || 'http://traccar:8082'}/api/commands/send`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Basic ' + Buffer.from('admin:admin').toString('base64')
+                },
+                body: JSON.stringify({
+                    deviceId: deviceId, // Traccar numeric ID or UniqueID depending on setup
+                    type: typeMap[commandType] || 'custom',
+                    attributes: commandType === 'custom' ? { data: req.body.customData } : {}
+                })
+            });
 
-            // In a real environment, you'd trigger Twilio here:
-            // await twilioClient.messages.create({ body: smsBody, from: adminMobile, to: deviceId });
-
-            return res.json({ status: 'SUCCESS', message: 'Admin Command Dispatched via SMS Gateway', command: smsBody });
+            if (traccarRes.ok) {
+                return res.json({ status: 'SUCCESS', message: 'Command Dispatched via Traccar GPRS Engine', source: 'traccar' });
+            }
+        } catch (traccarErr) {
+            console.warn('[Traccar] Command proxy failed, falling back to TCP Server:', traccarErr.message);
         }
 
-        // 3. Client Pre-defined Protocol Route
-        if (commandType === 'CUT_ENGINE') smsBody = 'RELAY,1#';
-        else if (commandType === 'RESTORE_ENGINE') smsBody = 'RELAY,0#';
-        else smsBody = commandType;
+        // 2. Fallback: Custom GPRS via TCP Server Redis Queue
+        let commandHex = '';
+        if (commandType === 'CUT_ENGINE') commandHex = 'Relay,1#';
+        else if (commandType === 'RESTORE_ENGINE') commandHex = 'Relay,0#';
+        else commandHex = commandType;
 
-        console.log(`[Command Queue] Sending command to ${deviceId}: ${smsBody}`);
-
-        // Push to Redis Queue so TCP server can pick it up and emit over the active socket
         if (redisClient) {
-            await redisClient.lPush(`cmd_queue:${deviceId}`, Buffer.from(smsBody).toString('hex'));
+            await redisClient.lPush(`cmd_queue:${deviceId}`, Buffer.from(commandHex).toString('hex'));
+            return res.json({ status: 'SUCCESS', message: 'Command queued to TCP Server GPRS queue.', source: 'tcp-server' });
         }
 
-        res.json({ status: 'SUCCESS', message: 'Command Dispatched to Device TCP Queue', command: smsBody });
+        res.status(503).json({ status: 'ERROR', message: 'No active command gateway available.' });
     } catch (err) {
-        console.error('Command Dispatch Error:', err);
+        console.error('Unified Command Dispatch Error:', err);
         res.status(500).json({ status: 'ERROR', message: 'Failed to dispatch command.' });
+    }
+});
+
+// 7. Automated Database Backup (Server & Google Drive)
+app.post('/api/admin/backup', async (req, res) => {
+    try {
+        console.log('[Backup] Initiating manual backup trigger...');
+        const backupPath = path.join(__dirname, `../backups/backup_${Date.now()}.sql`);
+
+        // Ensure directory exists
+        if (!fs.existsSync(path.join(__dirname, '../backups'))) {
+            fs.mkdirSync(path.join(__dirname, '../backups'), { recursive: true });
+        }
+
+        // Execute pg_dump (Assuming environment variables are set)
+        const password = process.env.POSTGRES_PASSWORD || 'gps_strong_password';
+        const user = process.env.POSTGRES_USER || 'gps_admin';
+        const db = process.env.POSTGRES_DB || 'gps_saas';
+        const host = process.env.DB_HOST || 'db';
+
+        const { exec } = require('child_process');
+        exec(`PGPASSWORD="${password}" pg_dump -h ${host} -U ${user} ${db} > ${backupPath}`, async (error) => {
+            if (error) {
+                console.error('[Backup] pg_dump failed:', error);
+                return res.status(500).json({ status: 'ERROR', message: 'Server storage backup failed.' });
+            }
+
+            console.log(`[Backup] Local backup saved: ${backupPath}`);
+
+            // Google Drive Upload
+            try {
+                const driveRes = await googleDrive.uploadFile(backupPath); // Default to root or env-defined folder
+                res.json({ status: 'SUCCESS', message: 'Backup secured locally and on Google Drive.', driveId: driveRes.id });
+            } catch (driveErr) {
+                console.warn('[Backup] Google Drive upload failed:', driveErr.message);
+                res.json({ status: 'SUCCESS', message: 'Backup secured locally, but Google Drive sync failed.' });
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Backup orchestration failed.' });
     }
 });
 

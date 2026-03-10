@@ -13,7 +13,7 @@ import {
     FileText, CreditCard, Droplet, LayoutDashboard, Zap, Menu, X, Hexagon, Route as RouteIcon,
     TrendingDown, CheckSquare, Wrench, FolderOpen, UserCircle, Briefcase, Share2, FileWarning, Smartphone, Monitor, Rocket, Server, DollarSign,
     Play, Pause, FastForward, SkipBack, Rewind, Calendar as CalendarIcon, History,
-    Gauge, Power, MapPin, RefreshCcw, Plus, KeyRound, Eye, EyeOff, Hash, AlertCircle
+    Gauge, Power, MapPin, RefreshCcw, Plus, KeyRound, Eye, EyeOff, Hash, AlertCircle, SlidersHorizontal
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, ZoomControl, Polyline, LayerGroup, useMap, useMapEvents, Circle, Rectangle, Polygon } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
@@ -1663,7 +1663,7 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
         setPinError('');
         try {
             const commandToRun = selectedVehicle.ignition ? 'CUT_ENGINE' : 'RESTORE_ENGINE';
-            const req = await fetch(`${API_BASE}/api/commands/sms`, {
+            const req = await fetch(`${API_BASE}/api/commands/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ deviceId: selectedVehicle.id, commandType: commandToRun })

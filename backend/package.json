@@ -20,7 +20,8 @@
         "pg": "^8.11.3",
         "redis": "^4.6.10",
         "socket.io": "^4.7.2",
-        "twilio": "^5.12.2"
+        "twilio": "^5.12.2",
+        "node-fetch": "^2.7.0"
     },
     "devDependencies": {
         "nodemon": "^3.0.1"
