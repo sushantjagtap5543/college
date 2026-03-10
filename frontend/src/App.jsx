@@ -1404,23 +1404,35 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState('Objects');
     const [geofences, setGeofences] = useState([]);
+    const [alertRules, setAlertRules] = useState([]);
+    const [notificationProfile, setNotificationProfile] = useState({ email: '', phone: '', is_email_active: true, is_sms_active: false });
+    const [showNotificationModal, setShowNotificationModal] = useState(false);
+    const [geofenceSubTab, setGeofenceSubTab] = useState('Zones'); // 'Zones' or 'Rules'
     const [mapPanTo, setMapPanTo] = useState(null);
     const [currentAlert, setCurrentAlert] = useState(null);
     const [alertHistory, setAlertHistory] = useState([]);
 
     // Load geofences from backend
     useEffect(() => {
-        const fetchGeofences = async () => {
+        const loadInitialData = async () => {
+            if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE}/api/geofences`);
-                const data = await res.json();
-                if (data.status === 'SUCCESS') setGeofences(data.geofences || []);
+                // Fetch Geofences
+                const geoRes = await fetch(`${API_BASE}/api/geofences`);
+                const geoData = await geoRes.json();
+                if (geoData.status === 'SUCCESS') setGeofences(geoData.geofences || []);
+
+                // Fetch Rules
+                fetchRules();
+
+                // Fetch Profile
+                fetchNotificationProfile();
             } catch (err) {
-                console.warn('PostGIS/Geofence fetch failed.');
+                console.warn('Initial data load failed.');
             }
         };
-        fetchGeofences();
-    }, []);
+        loadInitialData();
+    }, [user?.id]);
 
     // Listen for real-time alerts from Socket.IO
     useEffect(() => {
@@ -1449,9 +1461,9 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
     const [pinCode, setPinCode] = useState('');
     const [pinError, setPinError] = useState('');
     const [commandLoading, setCommandLoading] = useState(false);
-    const [showIconPicker, setShowIconPicker] = useState(false);
-
-    // --- Geofence Draw State ---
+    const [showRuleModal, setShowRuleModal] = useState(false);
+    const [newRule, setNewRule] = useState({ name: '', type: 'speed', conditions: { limit: 80 } });
+    const [ruleLoading, setRuleLoading] = useState(false);
     const [drawMode, setDrawMode] = useState(null); // 'circle', 'rectangle', 'polygon', null
     const [showGeofenceModal, setShowGeofenceModal] = useState(false);
     const [drawnData, setDrawnData] = useState(null);
@@ -1460,6 +1472,22 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
     const handleGeofenceComplete = (data) => {
         setDrawnData(data);
         setShowGeofenceModal(true);
+    };
+
+    const fetchRules = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/alerts/rules?user_id=${user.id}`);
+            const data = await res.json();
+            if (data.status === 'SUCCESS') setAlertRules(data.rules);
+        } catch (e) { console.warn("Rules fetch failed", e); }
+    };
+
+    const fetchNotificationProfile = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/notifications/profiles?user_id=${user.id}`);
+            const data = await res.json();
+            if (data.status === 'SUCCESS' && data.profile) setNotificationProfile(data.profile);
+        } catch (e) { console.warn("Profile fetch failed", e); }
     };
 
     const saveGeofence = () => {
@@ -1503,6 +1531,34 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
         setDrawnData(null);
         setGeofenceName('');
         setShowGeofenceModal(false);
+    };
+
+    const saveRule = async () => {
+        if (!newRule.name.trim()) return;
+        setRuleLoading(true);
+        try {
+            const res = await fetch(`${API_BASE}/api/alerts/rules`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...newRule, user_id: user.id })
+            });
+            if (res.ok) {
+                setShowRuleModal(false);
+                fetchRules();
+            }
+        } catch (e) { console.error("Rule save failed", e); }
+        setRuleLoading(false);
+    };
+
+    const saveProfile = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/notifications/profiles`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...notificationProfile, user_id: user.id })
+            });
+            if (res.ok) setShowNotificationModal(false);
+        } catch (e) { console.error("Profile save failed", e); }
     };
 
     // (Using user from props)
@@ -1652,15 +1708,24 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
             <aside className="w-[340px] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col shrink-0 z-[100] shadow-md">
                 {/* Search Bar */}
                 <div className="p-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-400 shadow-sm text-slate-800 dark:text-white"
-                        />
+                    <div className="flex gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Search"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-500 transition-all placeholder:text-slate-400 shadow-sm text-slate-800 dark:text-white"
+                            />
+                        </div>
+                        <button
+                            onClick={() => setShowNotificationModal(true)}
+                            className="p-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md text-slate-500 hover:text-blue-600 transition-colors shadow-sm"
+                            title="Notification Center"
+                        >
+                            <SlidersHorizontal size={18} />
+                        </button>
                     </div>
                 </div>
 
@@ -1759,44 +1824,84 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                 {drawMode && <span className="text-blue-500 animate-pulse text-[10px]">Drawing...</span>}
                             </div>
 
-                            <div className="grid grid-cols-4 gap-2 mb-4 shrink-0">
-                                <button
-                                    onClick={() => setDrawMode(drawMode === 'circle' ? null : 'circle')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'circle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                                >
-                                    <div className="w-5 h-5 rounded-full border-2 border-current border-dashed"></div>
-                                    Circle
-                                </button>
-                                <button
-                                    onClick={() => setDrawMode(drawMode === 'rectangle' ? null : 'rectangle')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'rectangle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                                >
-                                    <div className="w-6 h-5 border-2 border-current border-dashed"></div>
-                                    Rect
-                                </button>
-                                <button
-                                    onClick={() => setDrawMode(drawMode === 'polygon' ? null : 'polygon')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'polygon' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                                >
-                                    <Hexagon size={16} className="text-current" />
-                                    Poly
-                                </button>
-                                <button
-                                    onClick={() => setDrawMode(drawMode === 'route' ? null : 'route')}
-                                    className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'route' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-400 text-amber-700 dark:text-amber-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-                                >
-                                    <RouteIcon size={16} className="text-current" />
-                                    Route
-                                </button>
+                            <div className="flex gap-4 border-b border-slate-100 dark:border-slate-800 mb-4">
+                                {['Zones', 'Rules'].map(t => (
+                                    <button
+                                        key={t}
+                                        onClick={() => setGeofenceSubTab(t)}
+                                        className={`pb-2 text-xs font-bold transition-all ${geofenceSubTab === t ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400'}`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
                             </div>
 
-                            {drawMode && (
-                                <div className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 p-2 border border-blue-200 dark:border-blue-800 rounded mb-4 shrink-0">
-                                    <div className="font-bold">Instructions:</div>
-                                    {drawMode === 'circle' && 'Click center, then click outer edge to set radius.'}
-                                    {drawMode === 'rectangle' && 'Click one corner, then click opposite corner.'}
-                                    {drawMode === 'polygon' && 'Click points to draw shape. Double-click to close.'}
-                                    {drawMode === 'route' && 'Click points to draw a path. Double-click to close. Creates a 100m buffer zone.'}
+                            {geofenceSubTab === 'Zones' ? (
+                                <>
+                                    <div className="grid grid-cols-4 gap-2 mb-4 shrink-0">
+                                        <button
+                                            onClick={() => setDrawMode(drawMode === 'circle' ? null : 'circle')}
+                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'circle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                        >
+                                            <div className="w-5 h-5 rounded-full border-2 border-current border-dashed"></div>
+                                            Circle
+                                        </button>
+                                        <button
+                                            onClick={() => setDrawMode(drawMode === 'rectangle' ? null : 'rectangle')}
+                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'rectangle' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                        >
+                                            <div className="w-6 h-5 border-2 border-current border-dashed"></div>
+                                            Rect
+                                        </button>
+                                        <button
+                                            onClick={() => setDrawMode(drawMode === 'polygon' ? null : 'polygon')}
+                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'polygon' ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                        >
+                                            <Hexagon size={16} className="text-current" />
+                                            Poly
+                                        </button>
+                                        <button
+                                            onClick={() => setDrawMode(drawMode === 'route' ? null : 'route')}
+                                            className={`py-2 rounded flex flex-col items-center justify-center gap-1 border transition-all text-[10px] font-semibold ${drawMode === 'route' ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-400 text-amber-700 dark:text-amber-400' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                                        >
+                                            <RouteIcon size={16} className="text-current" />
+                                            Route
+                                        </button>
+                                    </div>
+
+                                    {drawMode && (
+                                        <div className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 p-2 border border-blue-200 dark:border-blue-800 rounded mb-4 shrink-0">
+                                            <div className="font-bold">Instructions:</div>
+                                            {drawMode === 'circle' && 'Click center, then click outer edge to set radius.'}
+                                            {drawMode === 'rectangle' && 'Click one corner, then click opposite corner.'}
+                                            {drawMode === 'polygon' && 'Click points to draw shape. Double-click to close.'}
+                                            {drawMode === 'route' && 'Click points to draw a path. Double-click to close. Creates a 100m buffer zone.'}
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="space-y-3 flex-1 overflow-y-auto">
+                                    <button
+                                        onClick={() => { /* Opem Rule Creation Modal */ }}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <AlertCircle size={14} /> Create Automated Rule
+                                    </button>
+
+                                    {alertRules.length === 0 ? (
+                                        <div className="text-center py-10 opacity-30">No active rules</div>
+                                    ) : (
+                                        alertRules.map(rule => (
+                                            <div key={rule.id} className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-100 dark:border-slate-800 shadow-sm">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{rule.type}</span>
+                                                    <div className={`w-2 h-2 rounded-full ${rule.is_active ? 'bg-green-500' : 'bg-slate-300'}`} />
+                                                </div>
+                                                <div className="font-bold text-xs">{rule.name}</div>
+                                                <div className="text-[9px] text-slate-500 mt-1">Triggers: {JSON.stringify(rule.conditions)}</div>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
                             )}
 
@@ -2336,6 +2441,112 @@ const SimpleTracker = ({ fleet, mapTile = 'satellite', theme, setMapTile, setThe
                                         </button>
                                     </div>
                                 </form>
+                            </motion.div>
+                        </motion.div>
+                    )}
+
+                    {/* Notification Center Modal */}
+                    {showNotificationModal && (
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+                                className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800"
+                            >
+                                <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
+                                    <h3 className="font-bold flex items-center gap-2"><Bell size={18} /> Notification Center</h3>
+                                    <button onClick={() => setShowNotificationModal(false)}><X size={20} /></button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Recipient Email</label>
+                                        <input
+                                            type="email"
+                                            value={notificationProfile.email}
+                                            onChange={e => setNotificationProfile({ ...notificationProfile, email: e.target.value })}
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-sm"
+                                            placeholder="alerts@example.com"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">SMS Number</label>
+                                        <input
+                                            type="tel"
+                                            value={notificationProfile.phone}
+                                            onChange={e => setNotificationProfile({ ...notificationProfile, phone: e.target.value })}
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-sm"
+                                            placeholder="+1234567890"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={saveProfile}
+                                        className="w-full bg-blue-600 text-white py-2 rounded font-bold text-sm shadow-md"
+                                    >
+                                        Save Channels
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+
+                    {/* Rule Creation Modal */}
+                    {showRuleModal && (
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+                                className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800"
+                            >
+                                <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
+                                    <h3 className="font-bold flex items-center gap-2"><ShieldAlert size={18} /> New Automated Rule</h3>
+                                    <button onClick={() => setShowRuleModal(false)}><X size={20} /></button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Rule Name</label>
+                                        <input
+                                            type="text"
+                                            value={newRule.name}
+                                            onChange={e => setNewRule({ ...newRule, name: e.target.value })}
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-sm"
+                                            placeholder="Security Alert"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Rule Type</label>
+                                        <select
+                                            value={newRule.type}
+                                            onChange={e => setNewRule({ ...newRule, type: e.target.value })}
+                                            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-sm"
+                                        >
+                                            <option value="speed">Speed Limit Violation</option>
+                                            <option value="ignition">Ignition Status Change</option>
+                                            <option value="geofence">Geofence Boundary Alert</option>
+                                        </select>
+                                    </div>
+                                    {newRule.type === 'speed' && (
+                                        <div>
+                                            <label className="text-[10px] font-bold uppercase text-slate-400 mb-1 block">Speed Limit (km/h)</label>
+                                            <input
+                                                type="number"
+                                                value={newRule.conditions.limit}
+                                                onChange={e => setNewRule({ ...newRule, conditions: { ...newRule.conditions, limit: parseInt(e.target.value) } })}
+                                                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-2 text-sm"
+                                            />
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={saveRule}
+                                        disabled={ruleLoading}
+                                        className="w-full bg-blue-600 text-white py-2 rounded font-bold text-sm shadow-md"
+                                    >
+                                        {ruleLoading ? 'Saving...' : 'Activate Rule'}
+                                    </button>
+                                </div>
                             </motion.div>
                         </motion.div>
                     )}
