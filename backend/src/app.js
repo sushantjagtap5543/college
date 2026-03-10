@@ -964,12 +964,85 @@ app.post('/api/geofences', async (req, res) => {
     try {
         await pool.query(
             'INSERT INTO geofences (name, fence_type, coordinates, user_id) VALUES ($1, $2, $3, $4)',
-            [name, fence_type, JSON.stringify(coordinates), user_id]
+            [name, fence_type, JSON.stringify(coordinates), user_id || req.user?.id]
         );
         res.json({ status: 'SUCCESS' });
     } catch (err) {
         console.error("Geofence save error:", err);
         res.status(500).json({ status: 'ERROR', message: 'Failed to save geofence' });
+    }
+});
+
+// 5d. Alert Rules
+app.get('/api/alerts/rules', async (req, res) => {
+    const userId = req.query.user_id || req.user?.id;
+    try {
+        const result = await pool.query('SELECT * FROM alert_rules WHERE user_id = $1', [userId]);
+        res.json({ status: 'SUCCESS', rules: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Failed to fetch rules' });
+    }
+});
+
+app.post('/api/alerts/rules', async (req, res) => {
+    const { name, type, conditions, user_id } = req.body;
+    try {
+        await pool.query(
+            'INSERT INTO alert_rules (name, type, conditions, user_id) VALUES ($1, $2, $3, $4)',
+            [name, type, JSON.stringify(conditions), user_id || req.user?.id]
+        );
+        res.json({ status: 'SUCCESS' });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Failed to save rule' });
+    }
+});
+
+// 5e. Notification Profiles
+app.get('/api/notifications/profiles', async (req, res) => {
+    const userId = req.query.user_id || req.user?.id;
+    try {
+        const result = await pool.query('SELECT * FROM notification_profiles WHERE user_id = $1', [userId]);
+        res.json({ status: 'SUCCESS', profile: result.rows[0] });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Failed to fetch profiles' });
+    }
+});
+
+app.post('/api/notifications/profiles', async (req, res) => {
+    const { email, phone, user_id } = req.body;
+    try {
+        await pool.query(`
+            INSERT INTO notification_profiles (user_id, email, phone)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email, phone = EXCLUDED.phone
+        `, [user_id || req.user?.id, email, phone]);
+        res.json({ status: 'SUCCESS' });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Failed to save profile' });
+    }
+});
+
+// 5f. Georoutes
+app.get('/api/georoutes', async (req, res) => {
+    const userId = req.query.user_id || req.user?.id;
+    try {
+        const result = await pool.query('SELECT * FROM georoutes WHERE user_id = $1', [userId]);
+        res.json({ status: 'SUCCESS', georoutes: result.rows });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Failed to fetch georoutes' });
+    }
+});
+
+app.post('/api/georoutes', async (req, res) => {
+    const { name, coordinates, user_id } = req.body;
+    try {
+        await pool.query(
+            'INSERT INTO georoutes (name, coordinates, user_id) VALUES ($1, $2, $3)',
+            [name, JSON.stringify(coordinates), user_id || req.user?.id]
+        );
+        res.json({ status: 'SUCCESS' });
+    } catch (err) {
+        res.status(500).json({ status: 'ERROR', message: 'Failed to save georoute' });
     }
 });
 
