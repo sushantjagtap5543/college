@@ -19,7 +19,7 @@ const cron = require('node-cron');
 const googleDrive = require('./services/googleDrive');
 const fs = require('fs');
 const path = require('path');
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+
 
 const app = express();
 const CommandFactory = {
@@ -1124,7 +1124,7 @@ app.get('/api/fleet', async (req, res) => {
         let vehicleMetadata = {};
         if (role === 'CLIENT' && userId) {
             const result = await pool.query(`
-                SELECT d.imei, v.id as vehicle_id, v.vehicle_name, v.plate_number FROM devices d 
+                SELECT d.imei, v.id as vehicle_id, v.vehicle_number, v.driver_name FROM devices d 
                 JOIN vehicles v ON d.id = v.device_id 
                 WHERE v.client_id = $1 AND v.is_active = true
             `, [userId]);
@@ -1145,8 +1145,8 @@ app.get('/api/fleet', async (req, res) => {
                     fleet.push({
                         id: data.imei,
                         vehicle_id: meta.vehicle_id,
-                        name: meta.vehicle_name || `Device ${data.imei.slice(-6)}`,
-                        plate_number: meta.plate_number,
+                        name: meta.vehicle_number || `Device ${data.imei.slice(-6)}`,
+                        plate_number: meta.driver_name,
                         type: 'car',
                         status: parseInt(data.speed) > 2 ? 'moving' : 'idle',
                         speed: parseInt(data.speed) || 0,
@@ -1520,9 +1520,9 @@ redisSub.connect().then(() => {
             if (speedKmh > 0) await checkOverspeed(data.imei, speedKmh);
 
             // Fetch vehicle info for richer alerts
-            const vRes = await pool.query('SELECT v.vehicle_name, v.plate_number FROM vehicles v JOIN devices d ON d.id=v.device_id WHERE d.imei=$1 AND v.is_active=true LIMIT 1', [data.imei]);
-            const vehicleName = vRes.rows[0]?.vehicle_name || data.imei;
-            const plateNumber = vRes.rows[0]?.plate_number || 'N/A';
+            const vRes = await pool.query('SELECT v.vehicle_number, v.driver_name FROM vehicles v JOIN devices d ON d.id=v.device_id WHERE d.imei=$1 AND v.is_active=true LIMIT 1', [data.imei]);
+            const vehicleName = vRes.rows[0]?.vehicle_number || data.imei;
+            const plateNumber = vRes.rows[0]?.driver_name || 'N/A';
 
             entered.forEach(gf => {
                 const alert = {
